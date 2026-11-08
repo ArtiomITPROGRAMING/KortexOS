@@ -1,0 +1,13 @@
+[Unit]
+Description=Kortex AI Background Neural Daemon
+After=network.target kis.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/kortex-ai-daemon
+Restart=always
+RestartSec=5
+User=root
+
+[Install]
+WantedBy=multi-user.target

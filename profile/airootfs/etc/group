@@ -1,0 +1,7 @@
+root:x:0:root
+wheel:x:998:kortex
+audio:x:995:kortex
+video:x:986:kortex
+input:x:990:kortex
+storage:x:988:kortex
+kortex:x:1000:

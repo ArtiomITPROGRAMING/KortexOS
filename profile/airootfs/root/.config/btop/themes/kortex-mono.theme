@@ -1,0 +1,79 @@
+# KortexOS Cyberpunk Monochrome Theme for btop
+# Main background, empty for terminal default, need to be empty if you want transparent background
+theme[main_bg]="#000000"
+
+# Main text color
+theme[main_fg]="#ffffff"
+
+# Title color for boxes
+theme[title]="#ffffff"
+
+# Highlight color for keyboard shortcuts
+theme[hi_fg]="#ffffff"
+
+# Background color of selected item in processes box
+theme[selected_bg]="#222222"
+
+# Foreground color of selected item in processes box
+theme[selected_fg]="#ffffff"
+
+# Color of inactive/disabled text
+theme[inactive_fg]="#555555"
+
+# Misc colors for processes box including mini cpu graphs, details memory graph and details status text
+theme[proc_misc]="#888888"
+
+# Cpu box outline color
+theme[cpu_box]="#444444"
+
+# Memory/disks box outline color
+theme[mem_box]="#444444"
+
+# Net up/down box outline color
+theme[net_box]="#444444"
+
+# Processes box outline color
+theme[proc_box]="#444444"
+
+# Box divider line and small boxes line color
+theme[div_line]="#333333"
+
+# Temperature graph colors
+theme[temp_start]="#666666"
+theme[temp_mid]="#aaaaaa"
+theme[temp_end]="#ffffff"
+
+# CPU graph colors
+theme[cpu_start]="#555555"
+theme[cpu_mid]="#999999"
+theme[cpu_end]="#ffffff"
+
+# Mem colors
+theme[free_start]="#444444"
+theme[free_mid]="#888888"
+theme[free_end]="#cccccc"
+
+# Mem used
+theme[used_start]="#666666"
+theme[used_mid]="#aaaaaa"
+theme[used_end]="#ffffff"
+
+# Available mem
+theme[available_start]="#444444"
+theme[available_mid]="#888888"
+theme[available_end]="#cccccc"
+
+# Cached mem
+theme[cached_start]="#444444"
+theme[cached_mid]="#888888"
+theme[cached_end]="#cccccc"
+
+# Net upload graph colors
+theme[upload_start]="#555555"
+theme[upload_mid]="#999999"
+theme[upload_end]="#ffffff"
+
+# Net download graph colors
+theme[download_start]="#555555"
+theme[download_mid]="#999999"
+theme[download_end]="#ffffff"

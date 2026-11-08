@@ -1,0 +1,17 @@
+# KortexOS Yazi Configuration
+[manager]
+layout = [1, 3, 4]
+sort_by = "alphabetical"
+sort_sensitive = false
+sort_reverse = false
+sort_dir_first = true
+show_hidden = true
+show_symlink = true
+
+[opener]
+edit = [
+    { run = 'nano "$@"', block = true, for = "unix" },
+]
+open = [
+    { run = 'xdg-open "$@"', desc = "Open", for = "unix" },
+]

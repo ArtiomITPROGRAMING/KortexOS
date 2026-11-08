@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# KortexOS Smart Application Launcher & Workspace Router (kortex-launch)
+# Routes user applications to Workspace 2 (2:APPS) to preserve Workspace 1 Grid
+# ==============================================================================
+
+set -eu
+
+if [ "$#" -eq 0 ]; then
+    echo "Usage: kortex-launch <command> [args...]"
+    exit 1
+fi
+
+ensure_hyprland_sig() {
+    if [ -z "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
+        local sig
+        sig=$(ls -td /run/user/"$(id -u)"/hypr/* 2>/dev/null | head -n 1 | xargs -r basename)
+        if [ -n "$sig" ]; then
+            export HYPRLAND_INSTANCE_SIGNATURE="$sig"
+        fi
+    fi
+}
+
+ensure_hyprland_sig
+
+# Check current active workspace
+cur_ws=""
+if command -v hyprctl >/dev/null 2>&1 && [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
+    cur_ws=$(hyprctl activeworkspace -j 2>/dev/null | grep -o '"id": *[0-9]*' | head -n 1 | awk '{print $2}' || true)
+fi
+
+# If on Workspace 1 (Grid Dashboard), route ordinary apps to Workspace 2
+if [ "$cur_ws" = "1" ] || [ -z "$cur_ws" ]; then
+    if command -v hyprctl >/dev/null 2>&1 && [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
+        hyprctl dispatch 'hl.dsp.focus({ workspace = 2 })' >/dev/null 2>&1 || hyprctl dispatch workspace 2 >/dev/null 2>&1 || true
+    fi
+fi
+
+# Play subtle audio feedback
+/usr/local/bin/kortex-audio-fx --play win_open >/dev/null 2>&1 &
+
+# Execute target command in background
+nohup "$@" >/dev/null 2>&1 &
+
+exit 0

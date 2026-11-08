@@ -1,0 +1,223 @@
+#!/usr/bin/env python3
+"""
+KortexOS Cyberpunk Lock Screen (kortex-lock)
+Fullscreen lock screen with memory dump cascade, Tron access gate,
+PAM/su verification, and Hyprland lock submap enforcement.
+"""
+
+import os
+import sys
+import time
+import curses
+import random
+import subprocess
+import getpass
+import glob
+
+def set_hyprland_submap(mode):
+    xdg_runtime = os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
+    sig = os.environ.get("HYPRLAND_INSTANCE_SIGNATURE")
+    if not sig:
+        for d in glob.glob(f"{xdg_runtime}/hypr/*"):
+            if os.path.exists(f"{d}/.socket2.sock"):
+                sig = os.path.basename(d)
+                break
+    if sig:
+        env = os.environ.copy()
+        env["HYPRLAND_INSTANCE_SIGNATURE"] = sig
+        subprocess.run(["hyprctl", "dispatch", "submap", mode], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+def verify_credentials(password):
+    user = getpass.getuser()
+    if not password:
+        return False
+    # If livecd default user 'kortex' and pass '1'
+    if user == "kortex" and password == "1":
+        return True
+    
+    # Try su verification
+    try:
+        proc = subprocess.run(
+            ["su", "-c", "true", user],
+            input=f"{password}\n",
+            capture_output=True,
+            text=True,
+            timeout=3
+        )
+        return proc.returncode == 0
+    except Exception:
+        pass
+    return False
+
+def generate_hex_dump_line():
+    addr = f"0x{random.randint(0x7FFF0000, 0x7FFFFFFF):08X}"
+    hex_bytes = " ".join(f"{random.randint(0, 255):02X}" for _ in range(8))
+    labels = ["[KORTEX-OS]", "[SEC_GATE]", "[TELEMETRY]", "[ENCRYPTED]", "[ZRAM_ACTIVE]", "[HYPR_LOCK]"]
+    lbl = random.choice(labels)
+    return f"{addr}:  {hex_bytes}  {lbl:<14}"
+
+def safe_addstr(win, y, x, text, attr=0):
+    max_y, max_x = win.getmaxyx()
+    if 0 <= y < max_y and 0 <= x < max_x:
+        try:
+            win.addstr(y, x, text[:max_x - x - 1], attr)
+        except curses.error:
+            pass
+
+def lock_ui(stdscr):
+    curses.curs_set(0)
+    stdscr.nodelay(True)
+    stdscr.timeout(50)
+
+    curses.start_color()
+    curses.use_default_colors()
+    curses.init_pair(1, curses.COLOR_WHITE, -1)
+    curses.init_pair(2, curses.COLOR_BLACK, curses.COLOR_WHITE)
+    curses.init_pair(3, curses.COLOR_RED, -1)
+    curses.init_pair(4, curses.COLOR_BLACK, curses.COLOR_RED)
+    curses.init_pair(5, curses.COLOR_GREEN, -1)
+    curses.init_pair(6, curses.COLOR_BLACK, curses.COLOR_GREEN)
+
+    set_hyprland_submap("locked")
+
+    h, w = stdscr.getmaxyx()
+    bg_lines = [generate_hex_dump_line() for _ in range(h + 5)]
+
+    input_pass = []
+    flash_state = None # "denied", "granted", None
+    flash_timer = 0
+    failed_attempts = 0
+
+    while True:
+        now = time.time()
+        h, w = stdscr.getmaxyx()
+        stdscr.erase()
+
+        # Update background matrix cascade
+        if random.random() < 0.6:
+            bg_lines.pop(0)
+            bg_lines.append(generate_hex_dump_line())
+
+        # Render background memory stream
+        dim_attr = curses.A_DIM | curses.color_pair(1)
+        for y in range(h):
+            if y < len(bg_lines):
+                safe_addstr(stdscr, y, 2, bg_lines[y], dim_attr)
+                if w > 80:
+                    safe_addstr(stdscr, y, w - len(bg_lines[y]) - 2, bg_lines[y], dim_attr)
+
+        # Center Modal Box
+        box_w = min(64, w - 4)
+        box_h = 13
+        bx = (w - box_w) // 2
+        by = max(1, (h - box_h) // 2)
+
+        # Blackout modal background
+        for y in range(by, by + box_h):
+            safe_addstr(stdscr, y, bx, " " * box_w, curses.color_pair(1))
+
+        # Box Border
+        b_attr = curses.color_pair(3) | curses.A_BOLD if flash_state == "denied" else (
+                 curses.color_pair(5) | curses.A_BOLD if flash_state == "granted" else curses.color_pair(1) | curses.A_BOLD)
+        
+        safe_addstr(stdscr, by, bx, "┌" + "─" * (box_w - 2) + "┐", b_attr)
+        for y in range(by + 1, by + box_h - 1):
+            safe_addstr(stdscr, y, bx, "│", b_attr)
+            safe_addstr(stdscr, y, bx + box_w - 1, "│", b_attr)
+        safe_addstr(stdscr, by + box_h - 1, bx, "└" + "─" * (box_w - 2) + "┘", b_attr)
+
+        # Box Title
+        b_title = " [ SYSTEM LOCKED // KORTEX SECURITY GATE ] "
+        safe_addstr(stdscr, by, bx + (box_w - len(b_title)) // 2, b_title, curses.color_pair(2) if flash_state != "denied" else curses.color_pair(4))
+
+        # Clock
+        curr_time = time.strftime("%H:%M:%S")
+        safe_addstr(stdscr, by + 2, bx + (box_w - len(curr_time)) // 2, curr_time, curses.color_pair(1) | curses.A_BOLD)
+        node_str = "TERMINAL STATION // HYBRID ARCH"
+        safe_addstr(stdscr, by + 3, bx + (box_w - len(node_str)) // 2, node_str, curses.A_DIM | curses.color_pair(1))
+
+        # Input Field
+        code_bullets = "•" * len(input_pass)
+        hex_suffix = f"0x{(hash(''.join(input_pass)) & 0xFFFF):04X}" if input_pass else "0x0000"
+        field_str = f"[ ACCESS CODE: {code_bullets:<12} {hex_suffix} ]"
+        safe_addstr(stdscr, by + 6, bx + (box_w - len(field_str)) // 2, field_str, curses.color_pair(1) | curses.A_BOLD)
+
+        # Status / Feedback
+        if flash_state == "denied":
+            msg = " !! ACCESS DENIED // INVALID PASSKEY !! "
+            safe_addstr(stdscr, by + 8, bx + (box_w - len(msg)) // 2, msg, curses.color_pair(4) | curses.A_BLINK | curses.A_BOLD)
+        elif flash_state == "granted":
+            msg = " [ ACCESS GRANTED // WELCOME OPERATOR ] "
+            safe_addstr(stdscr, by + 8, bx + (box_w - len(msg)) // 2, msg, curses.color_pair(6) | curses.A_BOLD)
+        else:
+            hint = "ENTER PASSKEY AND PRESS [ENTER]"
+            safe_addstr(stdscr, by + 8, bx + (box_w - len(hint)) // 2, hint, curses.A_DIM | curses.color_pair(1))
+
+        subhint = f"NODE: {getpass.getuser()}@kortexos // ATTEMPTS: {failed_attempts}"
+        safe_addstr(stdscr, by + 10, bx + (box_w - len(subhint)) // 2, subhint, curses.A_DIM | curses.color_pair(1))
+
+        stdscr.refresh()
+
+        if flash_state and now > flash_timer:
+            if flash_state == "granted":
+                break
+            flash_state = None
+
+        # Handle Keys
+        try:
+            ch = stdscr.getch()
+            if ch == -1:
+                continue
+
+            if ch in (10, 13, curses.KEY_ENTER): # Enter
+                entered = "".join(input_pass)
+                if verify_credentials(entered):
+                    flash_state = "granted"
+                    flash_timer = now + 0.8
+                    subprocess.run(["kortex-audio-fx", "--play", "granted"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                else:
+                    flash_state = "denied"
+                    flash_timer = now + 1.2
+                    failed_attempts += 1
+                    input_pass.clear()
+                    subprocess.run(["kortex-audio-fx", "--play", "alert"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            elif ch in (curses.KEY_BACKSPACE, 127, 8):
+                if input_pass:
+                    input_pass.pop()
+                    subprocess.run(["kortex-audio-fx", "--play", "key_backspace"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            elif 32 <= ch <= 126:
+                if len(input_pass) < 24:
+                    input_pass.append(chr(ch))
+                    subprocess.run(["kortex-audio-fx", "--play", "key_normal"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except KeyboardInterrupt:
+            pass
+
+    set_hyprland_submap("reset")
+
+def main():
+    if "--ui" in sys.argv:
+        os.environ.setdefault("TERM", "xterm-256color")
+        try:
+            curses.wrapper(lock_ui)
+        finally:
+            set_hyprland_submap("reset")
+        return
+
+    # Wrapper to launch fullscreen Kitty with lock submap
+    xdg_runtime = os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
+    env = os.environ.copy()
+    env.pop("KITTY_WINDOW_ID", None)
+    env.pop("KITTY_PID", None)
+    
+    cmd = [
+        "kitty",
+        "--class", "kortex-lock",
+        "--title", "[ KORTEX SECURITY GATE ]",
+        "--start-as=fullscreen",
+        "--override", "confirm_os_window_close=0",
+        "/usr/local/bin/kortex-lock", "--ui"
+    ]
+    subprocess.run(cmd, env=env)
+
+if __name__ == "__main__":
+    main()

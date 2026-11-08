@@ -1,0 +1,17 @@
+[Unit]
+Description=KortexOS Intelligence System (KIS) Hardware & Telemetry Daemon
+After=network.target local-fs.target
+DefaultDependencies=no
+
+[Service]
+Type=simple
+ExecStartPre=-/usr/local/bin/kis-hw-detect
+ExecStart=/usr/local/bin/kis-daemon
+Restart=always
+RestartSec=2
+User=root
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

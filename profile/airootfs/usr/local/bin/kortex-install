@@ -1,0 +1,352 @@
+#!/usr/bin/env python3
+"""
+KortexOS Intelligence System (KIS) - Low-Level Operating System Installer
+Deploy KortexOS to bare-metal NVMe/SSD/HDD or virtual disks with smart partitioning,
+UEFI/BIOS bootloader installation, and automatic hardware adaptation.
+"""
+
+import os
+import sys
+import time
+import json
+import subprocess
+import argparse
+
+BANNER = """
+\033[1;37m┌────────────────────────────────────────────────────────┐
+│  [KORTEX-OS] LOW-LEVEL INTELLIGENT SYSTEM INSTALLER     │
+│  Autonomous Hardware Deployment & Provisioning Engine  │
+└────────────────────────────────────────────────────────┘\033[0m
+"""
+
+def run_cmd(cmd, check=True, capture=True):
+    if isinstance(cmd, str):
+        cmd = ["bash", "-c", cmd]
+    if capture:
+        res = subprocess.run(cmd, capture_output=True, text=True)
+    else:
+        res = subprocess.run(cmd)
+    if check and res.returncode != 0:
+        err = res.stderr if capture else f"Command failed: {cmd}"
+        raise RuntimeError(f"Error executing {cmd}:\n{err}")
+    return res
+
+def is_uefi():
+    return os.path.exists("/sys/firmware/efi")
+
+def get_block_devices():
+    devices = []
+    try:
+        res = run_cmd("lsblk -J -d -p -o NAME,SIZE,TYPE,MODEL,RO")
+        data = json.loads(res.stdout)
+        for dev in data.get("blockdevices", []):
+            # Skip read-only, loop, ram, and optical drives
+            name = dev.get("name", "")
+            ro = dev.get("ro", False)
+            dev_type = dev.get("type", "")
+            if ro or dev_type in ("rom", "loop", "ram") or "sr0" in name:
+                continue
+            devices.append({
+                "name": name,
+                "size": dev.get("size", "Unknown"),
+                "model": (dev.get("model") or "Generic Drive").strip()
+            })
+    except Exception as e:
+        print(f"[-] Warning reading block devices: {e}")
+    return devices
+
+def print_step(num, title):
+    print(f"\n\033[1;37m[STEP {num}] {title}\033[0m")
+    print("\033[0;37m" + "─" * 56 + "\033[0m")
+
+def confirm(prompt):
+    try:
+        ans = input(f"\033[1;33m[?] {prompt} (yes/no): \033[0m").strip().lower()
+        return ans in ("y", "yes")
+    except (KeyboardInterrupt, EOFError):
+        print("\nAborted.")
+        sys.exit(1)
+
+def partition_disk(disk, uefi=True, fs="ext4", target_dir="/mnt/kortex_target"):
+    print(f"[*] Ensuring {disk} and {target_dir} are unmounted...")
+    run_cmd(f"umount -R {target_dir} 2>/dev/null || true")
+    run_cmd(f"swapoff -a 2>/dev/null || true")
+    run_cmd(f"umount -q {disk}* 2>/dev/null || true")
+    print(f"[*] Wiping signatures on {disk}...")
+    run_cmd(f"wipefs -a -f {disk}")
+
+    if uefi:
+        print("[*] Creating GPT partition table (UEFI)...")
+        run_cmd(f"parted -s {disk} mklabel gpt")
+        print("[*] Creating 512MB EFI System Partition...")
+        run_cmd(f"parted -s {disk} mkpart ESP fat32 1MiB 513MiB")
+        run_cmd(f"parted -s {disk} set 1 esp on")
+        print(f"[*] Creating Root partition ({fs})...")
+        run_cmd(f"parted -s {disk} mkpart primary 513MiB 100%")
+        
+        # Partition paths (handle nvme/loop vs sd)
+        part_prefix = "p" if ("nvme" in disk or "loop" in disk) else ""
+        esp_part = f"{disk}{part_prefix}1"
+        root_part = f"{disk}{part_prefix}2"
+        
+        # Wait for kernel to register partitions
+        run_cmd(f"partprobe {disk} || true")
+        time.sleep(1)
+        
+        print(f"[*] Formatting EFI partition {esp_part} (FAT32)...")
+        run_cmd(f"mkfs.vfat -F32 {esp_part}")
+        
+        print(f"[*] Formatting Root partition {root_part} ({fs.upper()})...")
+        if fs == "btrfs":
+            run_cmd(f"mkfs.btrfs -f -L KORTEX_ROOT {root_part}")
+        else:
+            run_cmd(f"mkfs.ext4 -F -L KORTEX_ROOT {root_part}")
+            
+        return esp_part, root_part
+    else:
+        print("[*] Creating MBR partition table (BIOS)...")
+        run_cmd(f"parted -s {disk} mklabel msdos")
+        print(f"[*] Creating Root partition ({fs})...")
+        run_cmd(f"parted -s {disk} mkpart primary ext4 1MiB 100%")
+        run_cmd(f"parted -s {disk} set 1 boot on")
+        
+        part_prefix = "p" if ("nvme" in disk or "loop" in disk) else ""
+        root_part = f"{disk}{part_prefix}1"
+        
+        run_cmd(f"partprobe {disk} || true")
+        time.sleep(1)
+        
+        print(f"[*] Formatting Root partition {root_part} ({fs.upper()})...")
+        run_cmd(f"mkfs.ext4 -F -L KORTEX_ROOT {root_part}")
+        return None, root_part
+
+def mount_target(esp_part, root_part, target_dir="/mnt/kortex_target"):
+    print(f"[*] Mounting target filesystems at {target_dir}...")
+    run_cmd(f"mkdir -p {target_dir}")
+    run_cmd(f"mount {root_part} {target_dir}")
+    
+    if esp_part:
+        run_cmd(f"mkdir -p {target_dir}/boot")
+        run_cmd(f"mount {esp_part} {target_dir}/boot")
+
+def deploy_rootfs(target_dir="/mnt/kortex_target"):
+    print("[*] Deploying KortexOS root filesystem (live system clone)...")
+    exclude_list = [
+        "/proc/*", "/sys/*", "/dev/*", "/run/*", "/tmp/*",
+        "/mnt/*", "/media/*", "/lost+found", "/swapfile",
+        "/etc/udev/rules.d/70-persistent-net.rules"
+    ]
+    ex_args = " ".join([f"--exclude='{e}'" for e in exclude_list])
+    
+    # Use rsync for high-speed file transfer with preserved attributes
+    rsync_cmd = f"rsync -aAXH {ex_args} / {target_dir}/"
+    run_cmd(rsync_cmd)
+    
+    # Ensure standard mounts exist inside target
+    for d in ("proc", "sys", "dev", "run", "tmp", "mnt", "home/kortex"):
+        run_cmd(f"mkdir -p {target_dir}/{d}")
+        
+    print("[+] Core filesystem deployment complete.")
+
+def configure_target(target_dir, disk, esp_part, root_part, hostname="kortexos", user="kortex", password="1", uefi=True):
+    print("[*] Generating persistent fstab...")
+    run_cmd(f"genfstab -U {target_dir} > {target_dir}/etc/fstab")
+    
+    # Set Hostname
+    with open(f"{target_dir}/etc/hostname", "w") as f:
+        f.write(f"{hostname}\n")
+        
+    # Set Hosts
+    with open(f"{target_dir}/etc/hosts", "w") as f:
+        f.write(f"127.0.0.1\tlocalhost\n::1\tlocalhost\n127.0.1.1\t{hostname}.localdomain\t{hostname}\n")
+        
+    # Configure Machine ID
+    run_cmd(f"rm -f {target_dir}/etc/machine-id")
+    run_cmd(f"arch-chroot {target_dir} systemd-machine-id-setup")
+    
+    # Configure Users and Passwords
+    print(f"[*] Configuring user account '{user}' and root credentials...")
+    run_cmd(f"arch-chroot {target_dir} useradd -m -G wheel,audio,video,input,storage -s /bin/bash {user} 2>/dev/null || true")
+    run_cmd(f"echo '{user}:{password}' | arch-chroot {target_dir} chpasswd")
+    run_cmd(f"echo 'root:{password}' | arch-chroot {target_dir} chpasswd")
+    
+    # Sudoers wheel enable (passwordless for seamless cyberdeck operation)
+    run_cmd(f"mkdir -p {target_dir}/etc/sudoers.d")
+    with open(f"{target_dir}/etc/sudoers.d/wheel", "w") as f:
+        f.write("%wheel ALL=(ALL:ALL) NOPASSWD: ALL\n")
+    os.chmod(f"{target_dir}/etc/sudoers.d/wheel", 0o440)
+    
+    # Transfer all live customizations & persistence to installed target
+    print("[*] Transferring live design, themes, wallpapers and persistence to installed OS...")
+    user_home = f"{target_dir}/home/{user}"
+    run_cmd(f"mkdir -p {user_home}/.config")
+    live_home = f"/home/{user}" if os.path.exists(f"/home/{user}") else "/home/kortex"
+    if os.path.exists(f"{live_home}/.config"):
+        run_cmd(f"cp -rf {live_home}/.config/* {user_home}/.config/ 2>/dev/null || true")
+    if os.path.exists("/run/kortex-persistence/master-state.json"):
+        run_cmd(f"mkdir -p {user_home}/.config/kortex")
+        run_cmd(f"cp -f /run/kortex-persistence/master-state.json {user_home}/.config/kortex/master-state.json")
+    run_cmd(f"mkdir -p {user_home}/.config/kortex")
+    run_cmd(f"touch {user_home}/.config/kortex/.setup_done")
+    run_cmd(f"arch-chroot {target_dir} chown -R {user}:{user} /home/{user} 2>/dev/null || true")
+    
+    # Ensure kernel exists in target /boot
+    if not os.path.exists(f"{target_dir}/boot/vmlinuz-linux-zen"):
+        for k_src in [
+            "/run/archiso/bootmnt/arch/boot/x86_64/vmlinuz-linux-zen",
+            "/boot/vmlinuz-linux-zen",
+            "/run/archiso/bootmnt/vmlinuz-linux-zen"
+        ]:
+            if os.path.exists(k_src):
+                print(f"[*] Deploying kernel from {k_src} to target /boot...")
+                run_cmd(f"mkdir -p {target_dir}/boot")
+                run_cmd(f"cp {k_src} {target_dir}/boot/vmlinuz-linux-zen")
+                break
+
+    # Clean archiso-specific initramfs config and use standard system hooks
+    run_cmd(f"rm -f {target_dir}/etc/mkinitcpio.conf.d/archiso.conf")
+    with open(f"{target_dir}/etc/mkinitcpio.conf.d/kortex.conf", "w") as f:
+        f.write('HOOKS=(base udev plymouth autodetect microcode modconf kms keyboard keymap consolefont block filesystems fsck)\n')
+
+    # Configure Plymouth default theme in target
+    os.makedirs(f"{target_dir}/etc/plymouth", exist_ok=True)
+    with open(f"{target_dir}/etc/plymouth/plymouthd.conf", "w") as f:
+        f.write("[Daemon]\nTheme=kortex-tron\nShowDelay=0\nDeviceTimeout=8\n")
+
+    # Rebuild Initramfs for target machine
+    print("[*] Rebuilding kernel initramfs (linux-zen with plymouth)...")
+    run_cmd(f"arch-chroot {target_dir} mkinitcpio -P")
+    
+    # Install Bootloader
+    if uefi:
+        print("[*] Installing systemd-boot (UEFI)...")
+        run_cmd(f"arch-chroot {target_dir} bootctl install")
+        
+        # Determine Root UUID
+        res = run_cmd(f"blkid -s UUID -o value {root_part}")
+        root_uuid = res.stdout.strip()
+        
+        # Write loader.conf
+        with open(f"{target_dir}/boot/loader/loader.conf", "w") as f:
+            f.write("default kortex.conf\ntimeout 3\nconsole-mode max\neditor no\n")
+            
+        # Write kortex.conf entry
+        os.makedirs(f"{target_dir}/boot/loader/entries", exist_ok=True)
+        with open(f"{target_dir}/boot/loader/entries/kortex.conf", "w") as f:
+            f.write(f"""title KortexOS Cyberpunk Linux
+linux /vmlinuz-linux-zen
+initrd /initramfs-linux-zen.img
+options root=UUID={root_uuid} rw quiet splash loglevel=3 rd.udev.log_level=3 vt.global_cursor_default=0 udev.log_priority=3
+""")
+    else:
+        print(f"[*] Installing GRUB (BIOS) on {disk}...")
+        grub_default = f"{target_dir}/etc/default/grub"
+        if os.path.exists(grub_default):
+            with open(grub_default, "r") as gf:
+                g_content = gf.read()
+            import re
+            g_content = re.sub(r'GRUB_CMDLINE_LINUX_DEFAULT=".*?"', 'GRUB_CMDLINE_LINUX_DEFAULT="quiet splash loglevel=3 rd.udev.log_level=3 vt.global_cursor_default=0 udev.log_priority=3"', g_content)
+            with open(grub_default, "w") as gf:
+                gf.write(g_content)
+        run_cmd(f"arch-chroot {target_dir} grub-install --target=i386-pc {disk}")
+        run_cmd(f"arch-chroot {target_dir} grub-mkconfig -o /boot/grub/grub.cfg")
+        
+    # Enable Essential Services
+    print("[*] Enabling core system services...")
+    for svc in ("NetworkManager", "kis", "systemd-resolved", "plymouth-start", "plymouth-quit", "kortex-ai", "kortex-link"):
+        run_cmd(f"arch-chroot {target_dir} systemctl enable {svc} 2>/dev/null || true")
+
+def unmount_target(target_dir="/mnt/kortex_target"):
+    print("[*] Syncing buffers and unmounting target...")
+    run_cmd("sync")
+    run_cmd(f"umount -R {target_dir} 2>/dev/null || true")
+
+def interactive_wizard():
+    print(BANNER)
+    boot_mode = "UEFI" if is_uefi() else "BIOS (Legacy)"
+    print(f"\033[1;36m[+] Detected Boot Environment: {boot_mode}\033[0m")
+    
+    print_step(1, "DISCOVER PHYSICAL BLOCK DEVICES")
+    devices = get_block_devices()
+    if not devices:
+        print("\033[1;31m[-] No eligible hard disks or SSDs detected.\033[0m")
+        print("    If using a virtual machine, please attach a virtual disk.")
+        sys.exit(1)
+        
+    for i, dev in enumerate(devices):
+        print(f"  [{i + 1}] {dev['name']:<16} Size: {dev['size']:<8} Model: {dev['model']}")
+        
+    while True:
+        try:
+            choice = input(f"\nSelect target disk [1-{len(devices)}] or 'q' to quit: ").strip()
+            if choice.lower() == 'q':
+                sys.exit(0)
+            idx = int(choice) - 1
+            if 0 <= idx < len(devices):
+                target_disk = devices[idx]["name"]
+                break
+        except ValueError:
+            pass
+        print("Invalid selection.")
+        
+    print_step(2, "FILESYSTEM & IDENTITY")
+    fs_choice = input("Select Root Filesystem (ext4 / btrfs) [default: ext4]: ").strip().lower() or "ext4"
+    if fs_choice not in ("ext4", "btrfs"):
+        fs_choice = "ext4"
+        
+    hostname = input("Hostname [default: kortexos]: ").strip() or "kortexos"
+    username = input("Primary Username [default: kortex]: ").strip() or "kortex"
+    password = input("User Password [default: 1]: ").strip() or "1"
+    
+    print_step(3, "CONFIRMATION & DEPLOYMENT")
+    print(f"\033[1;31mWARNING: All existing data on {target_disk} will be COMPLETELY ERASED!\033[0m")
+    print(f"Target Disk:       {target_disk}")
+    print(f"Boot Mode:         {boot_mode}")
+    print(f"Filesystem:        {fs_choice.upper()}")
+    print(f"Hostname:          {hostname}")
+    print(f"User:              {username}")
+    
+    if not confirm("Proceed with installation?"):
+        print("Installation canceled.")
+        sys.exit(0)
+        
+    start_time = time.time()
+    esp, root = partition_disk(target_disk, uefi=is_uefi(), fs=fs_choice)
+    mount_target(esp, root)
+    deploy_rootfs()
+    configure_target("/mnt/kortex_target", target_disk, esp, root, hostname, username, password, uefi=is_uefi())
+    unmount_target()
+    
+    elapsed = int(time.time() - start_time)
+    print("\n\033[1;32m════════════════════════════════════════════════════════")
+    print(f"  [SUCCESS] KORTEX-OS INSTALLED IN {elapsed} SECONDS!")
+    print("  You may now reboot into your new installation.")
+    print("════════════════════════════════════════════════════════\033[0m\n")
+
+def main():
+    if os.geteuid() != 0:
+        print("[-] KortexOS Installer requires root privileges. Please run with sudo.")
+        sys.exit(1)
+        
+    parser = argparse.ArgumentParser(description="KortexOS Low-Level Intelligent System Installer")
+    parser.add_argument("--disk", help="Target disk device, e.g. /dev/sda or /dev/nvme0n1")
+    parser.add_argument("--fs", default="ext4", choices=["ext4", "btrfs"], help="Root filesystem")
+    parser.add_argument("--hostname", default="kortexos", help="System hostname")
+    parser.add_argument("--user", default="kortex", help="Primary user account")
+    parser.add_argument("--password", default="1", help="User & root password")
+    parser.add_argument("--auto", action="store_true", help="Non-interactive automatic mode")
+    
+    args = parser.parse_args()
+    
+    if args.auto and args.disk:
+        esp, root = partition_disk(args.disk, uefi=is_uefi(), fs=args.fs)
+        mount_target(esp, root)
+        deploy_rootfs()
+        configure_target("/mnt/kortex_target", args.disk, esp, root, args.hostname, args.user, args.password, uefi=is_uefi())
+        unmount_target()
+        print(f"[+] Automated installation to {args.disk} complete.")
+    else:
+        interactive_wizard()
+
+if __name__ == "__main__":
+    main()

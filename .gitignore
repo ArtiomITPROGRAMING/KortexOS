@@ -1,0 +1,25 @@
+# Build artifacts
+out/
+work/
+cache/
+*.iso
+*.sfs
+
+# VirtualBox & VM artifacts
+*.vdi
+*.vbox
+*.vbox-prev
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Temporary root screenshots (curated screenshots kept in docs/screenshots/)
+vbox_*.png
+current_screen.png
+
+# Logs & temp files
+*.log
+tmp/
+.temp/

@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# KORTEX-OS HYPRLAND SESSION LAUNCHER
+# Strict native Hyprland invocation - Safe Mode & Black Screen prevention
+# ==============================================================================
+
+set -e
+
+# Remove any obsolete experimental lua files
+rm -f "$HOME/.config/hypr/hyprland.lua" \
+      /home/kortex/.config/hypr/hyprland.lua \
+      /etc/skel/.config/hypr/hyprland.lua \
+      /root/.config/hypr/hyprland.lua 2>/dev/null || true
+
+mkdir -p "$HOME/.config/hypr" /home/kortex/.config/hypr 2>/dev/null || true
+
+# Guarantee skel synchronization
+if [ -d /etc/skel/.config ]; then
+    cp -rf /etc/skel/.config/* "$HOME/.config/" 2>/dev/null || true
+    cp -rf /etc/skel/.config/* /home/kortex/.config/ 2>/dev/null || true
+fi
+
+# Clean crash locks, sockets and caches
+rm -rf "$HOME/.cache/hyprland"* /run/user/$(id -u)/hypr/* 2>/dev/null || true
+
+# Auto-detect VM/Hypervisor environment and guarantee software renderer fallback
+if systemd-detect-virt --quiet 2>/dev/null; then
+    export AQ_NO_MODIFIERS=1
+    export LIBGL_ALWAYS_SOFTWARE=1
+    export WLR_RENDERER_ALLOW_SOFTWARE=1
+    export WLR_NO_HARDWARE_CURSORS=1
+fi
+
+cfg="/home/kortex/.config/hypr/hyprland.conf"
+if [ ! -f "$cfg" ]; then
+    cfg="$HOME/.config/hypr/hyprland.conf"
+fi
+
+export HYPRLAND_CONFIG="$cfg"
+
+# Strictly invoke native Hyprland binary with explicit config file
+exec /usr/bin/Hyprland -c "$cfg" "$@"

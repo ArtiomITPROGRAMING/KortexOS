@@ -1,0 +1,30 @@
+# ==============================================================================
+# KORTEX-OS BASH CONFIGURATION
+# Pure Cyberpunk Monochrome (eDEX-UI Style)
+# ==============================================================================
+
+# If not running interactively, don't do anything
+[[ $- != *i* ]] && return
+
+alias ls='ls --color=never'
+alias grep='grep --color=never'
+alias ll='ls -lh'
+alias la='ls -lha'
+
+# Pure Monochrome Prompt
+PS1='\[\e[1;37m\][\u@\h \W]\$ \[\e[0m\]'
+
+# eDEX-UI Cyberpunk Boot Header (if in terminal)
+if [ -z "${KORTEX_HEADER_PRINTED:-}" ]; then
+    export KORTEX_HEADER_PRINTED=1
+    echo -e "\e[1;37mWELCOME TO: 2026-11-04.18.0 | TRAINING ADD2.2.0\e[0m"
+    echo -e "\e[1;37mRELEASED PET-TRACKED ADE9-02 MAISTER\e[0m"
+    echo -e "\e[0;37m[    0.000000] initialized os port ioing prevent...\e[0m"
+    echo -e "\e[0;37m[    0.000000] system core: linux-zen low-latency kernel\e[0m"
+    echo -e "\e[0;37m[    0.000000] display server: hyprland wayland compositor\e[0m"
+    echo -e "\e[0;37m[    0.000000] network stack: networkmanager online\e[0m"
+    echo -e "\e[0;37m[    0.000000] audio server: pipewire low-latency audio\e[0m"
+    echo -e "\e[0;37m[    0.000000] telemetry engine: active on workspace 1\e[0m"
+    echo -e "\e[0;37m[   10.000000] starting system configuration...\e[0m"
+    echo ""
+fi

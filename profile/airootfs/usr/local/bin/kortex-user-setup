@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# KORTEX-OS LIVE USER INITIALIZATION
+# Runs early on boot to guarantee kortex user, groups and home dir setup
+# ==============================================================================
+
+set -eu
+
+# Ensure kortex group exists
+if ! getent group kortex >/dev/null 2>&1; then
+    groupadd -g 1000 kortex 2>/dev/null || true
+fi
+
+# Ensure supplementary groups exist
+for grp in wheel audio video input storage network power; do
+    getent group "$grp" >/dev/null 2>&1 || groupadd "$grp" 2>/dev/null || true
+done
+
+# Ensure kortex user exists
+if ! id -u kortex >/dev/null 2>&1; then
+    useradd -m -u 1000 -g 1000 -G wheel,audio,video,input,storage -s /bin/bash kortex 2>/dev/null || true
+    echo "kortex:1" | chpasswd 2>/dev/null || true
+    echo "root:1" | chpasswd 2>/dev/null || true
+fi
+
+# Ensure /home/kortex exists and has full skel files
+mkdir -p /home/kortex/.config/kortex/plugins
+cp -a /etc/skel/. /home/kortex/ 2>/dev/null || true
+rm -f /home/kortex/.config/hypr/hyprland.lua /etc/skel/.config/hypr/hyprland.lua /root/.config/hypr/hyprland.lua 2>/dev/null || true
+
+# Fix permissions
+chown -R 1000:1000 /home/kortex
+chmod 755 /home/kortex
+chmod -R 755 /home/kortex/.config/kortex/plugins 2>/dev/null || true
+
+# Generate locale if needed
+locale-gen 2>/dev/null || true
+
+# Run KIS Hardware Detection & Low-level Tuning
+/usr/local/bin/kis-hw-detect || true
+
+exit 0

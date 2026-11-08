@@ -1,0 +1,317 @@
+#!/usr/bin/env python3
+"""
+Kortex App Hub (kortex-store)
+Curated Software Center, Arch Linux Package Repository & Flatpak Installer
+Tron / eDEX-UI Cyber Aesthetics with 1-click install, remove, and system-wide update.
+"""
+
+import os
+import sys
+import time
+import curses
+import subprocess
+import shutil
+
+CATEGORIES = [
+    ("Browsers & Web", [
+        ("firefox", "Firefox Web Browser", "Fast, private and extensible browser"),
+        ("chromium", "Chromium", "Open-source browser engine behind Chrome"),
+        ("torbrowser-launcher", "Tor Browser", "Anonymous web surfing and onion routing"),
+    ]),
+    ("Development & IDE", [
+        ("code", "Visual Studio Code", "Modern extensible code editor & IDE"),
+        ("neovim", "Neovim", "Vim-fork focused on extensibility and agility"),
+        ("git", "Git VCS", "Fast, scalable distributed version control system"),
+        ("docker", "Docker Engine", "Containerization platform for applications"),
+        ("rust", "Rust Compiler & Cargo", "Empowering everyone to build reliable software"),
+        ("gcc", "GNU C/C++ Compiler", "Industry standard C/C++ native compilers"),
+    ]),
+    ("Communication", [
+        ("telegram-desktop", "Telegram Desktop", "Fast and secure messaging app"),
+        ("discord", "Discord", "Voice, video and text chat platform"),
+        ("signal-desktop", "Signal Desktop", "End-to-end encrypted private messaging"),
+    ]),
+    ("Media & Graphics", [
+        ("vlc", "VLC Media Player", "Plays almost every audio & video codec"),
+        ("mpv", "MPV Player", "Ultra-fast lightweight video player for power users"),
+        ("obs-studio", "OBS Studio", "Free and open source software for video recording"),
+        ("gimp", "GIMP", "GNU Image Manipulation Program (Photoshop alternative)"),
+        ("blender", "Blender 3D", "Professional 3D graphics, modeling & rendering"),
+        ("audacity", "Audacity", "Multi-track audio editor and recorder"),
+    ]),
+    ("Gaming & Emulation", [
+        ("steam", "Steam", "The ultimate destination for playing & discussing games"),
+        ("lutris", "Lutris", "Open gaming platform for managing Windows/Linux games"),
+        ("wine", "Wine Compatibility Layer", "Run Windows applications natively on Linux"),
+        ("mangohud", "MangoHud", "Vulkan and OpenGL overlay for monitoring FPS & temps"),
+    ]),
+    ("Cybersecurity & Net", [
+        ("nmap", "Nmap Security Scanner", "Network exploration tool and security / port scanner"),
+        ("wireshark-qt", "Wireshark", "World's foremost network protocol analyzer"),
+        ("aircrack-ng", "Aircrack-ng", "Complete suite of 802.11 wireless audit tools"),
+        ("hashcat", "Hashcat", "World's fastest and most advanced password recovery"),
+    ]),
+]
+
+def is_pkg_installed(pkg_name):
+    # Check pacman
+    res = subprocess.run(["pacman", "-Qq", pkg_name], capture_output=True, text=True)
+    if res.returncode == 0:
+        return True
+    # Check binary in path
+    if shutil.which(pkg_name):
+        return True
+    return False
+
+def install_pkg(pkg_name):
+    cmd = ["sudo", "pacman", "-S", "--noconfirm", "--needed", pkg_name]
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    return proc
+
+def remove_pkg(pkg_name):
+    cmd = ["sudo", "pacman", "-Rns", "--noconfirm", pkg_name]
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    return proc
+
+def update_all_system():
+    cmd = ["sudo", "pacman", "-Syu", "--noconfirm"]
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    return proc
+
+def search_pacman(query):
+    results = []
+    try:
+        res = subprocess.run(["pacman", "-Ss", query], capture_output=True, text=True, timeout=5)
+        lines = res.stdout.splitlines()
+        for i in range(0, len(lines), 2):
+            if i + 1 < len(lines):
+                header = lines[i]
+                desc = lines[i+1].strip()
+                pkg_full = header.split()[0]
+                pkg_name = pkg_full.split("/")[-1]
+                installed = "[installed]" in header
+                results.append((pkg_name, desc, installed))
+    except Exception:
+        pass
+    return results[:25]
+
+def safe_addstr(win, y, x, text, attr=0):
+    max_y, max_x = win.getmaxyx()
+    if 0 <= y < max_y and 0 <= x < max_x:
+        try:
+            win.addstr(y, x, text[:max_x - x - 1], attr)
+        except curses.error:
+            pass
+
+def tui_main(stdscr):
+    curses.curs_set(0)
+    stdscr.nodelay(True)
+    stdscr.timeout(200)
+
+    curses.start_color()
+    curses.use_default_colors()
+    curses.init_pair(1, curses.COLOR_WHITE, -1)
+    curses.init_pair(2, curses.COLOR_BLACK, curses.COLOR_WHITE)
+    curses.init_pair(3, curses.COLOR_CYAN, -1)
+    curses.init_pair(4, curses.COLOR_GREEN, -1)
+    curses.init_pair(5, curses.COLOR_RED, -1)
+
+    cat_idx = 0
+    item_idx = 0
+    in_search = False
+    search_query = ""
+    search_results = []
+    
+    active_proc = None
+    proc_lines = []
+    status_msg = "Select application and press [ENTER] to Install or [X] to Remove"
+
+    # Pre-check installed states
+    installed_cache = {}
+    for _, items in CATEGORIES:
+        for pkg, _, _ in items:
+            installed_cache[pkg] = is_pkg_installed(pkg)
+
+    while True:
+        h, w = stdscr.getmaxyx()
+        stdscr.erase()
+
+        # Handle active proc output
+        if active_proc:
+            line = active_proc.stdout.readline()
+            if line:
+                proc_lines.append(line.strip())
+                if len(proc_lines) > 6:
+                    proc_lines.pop(0)
+            if active_proc.poll() is not None:
+                rc = active_proc.poll()
+                active_proc = None
+                status_msg = f"Task completed with exit code {rc}"
+                # Refresh installed cache
+                for _, items in CATEGORIES:
+                    for pkg, _, _ in items:
+                        installed_cache[pkg] = is_pkg_installed(pkg)
+
+        # Outer Frame
+        safe_addstr(stdscr, 0, 0, "┌" + "─" * (w - 2) + "┐", curses.color_pair(1))
+        for y in range(1, h - 1):
+            safe_addstr(stdscr, y, 0, "│", curses.color_pair(1))
+            safe_addstr(stdscr, y, w - 1, "│", curses.color_pair(1))
+        safe_addstr(stdscr, h - 1, 0, "└" + "─" * (w - 2) + "┘", curses.color_pair(1))
+
+        # Title
+        title = " [ KORTEX APP HUB // SOFTWARE CENTER & REPOSITORY ] "
+        safe_addstr(stdscr, 0, max(2, (w - len(title)) // 2), title, curses.color_pair(2))
+
+        # Left Column: Categories
+        col1_w = 26
+        safe_addstr(stdscr, 2, 3, "CATEGORIES", curses.color_pair(3) | curses.A_BOLD)
+        safe_addstr(stdscr, 3, 3, "─" * (col1_w - 4), curses.color_pair(1))
+        
+        for i, (c_name, _) in enumerate(CATEGORIES):
+            attr = curses.color_pair(2) if (i == cat_idx and not in_search) else curses.color_pair(1)
+            safe_addstr(stdscr, 4 + i, 3, f" {c_name:<20}", attr)
+
+        search_tab_attr = curses.color_pair(2) if in_search else curses.color_pair(1)
+        safe_addstr(stdscr, 4 + len(CATEGORIES) + 1, 3, " [S] Global Search    ", search_tab_attr)
+        safe_addstr(stdscr, 4 + len(CATEGORIES) + 2, 3, " [U] Update All System", curses.color_pair(1))
+
+        # Vertical Divider
+        for y in range(2, h - 5):
+            safe_addstr(stdscr, y, col1_w + 1, "│", curses.color_pair(1))
+
+        # Right Column: Items List
+        col2_x = col1_w + 3
+        right_w = w - col2_x - 3
+
+        if in_search:
+            safe_addstr(stdscr, 2, col2_x, f"ARCH REPO & FLATPAK SEARCH: '{search_query}'", curses.color_pair(3) | curses.A_BOLD)
+            safe_addstr(stdscr, 3, col2_x, "─" * right_w, curses.color_pair(1))
+
+            if not search_results:
+                safe_addstr(stdscr, 5, col2_x, "Type query and press Enter. [ESC] to return to curated catalog.", curses.A_DIM | curses.color_pair(1))
+            else:
+                for idx, (p_name, p_desc, p_inst) in enumerate(search_results[:h - 10]):
+                    is_sel = (idx == item_idx)
+                    attr = curses.color_pair(2) if is_sel else curses.color_pair(1)
+                    badge = "[INSTALLED]" if p_inst else "[AVAILABLE]"
+                    b_color = curses.color_pair(4) if p_inst else curses.color_pair(1)
+                    
+                    line = f"{p_name:<22}  {badge}"
+                    safe_addstr(stdscr, 5 + idx, col2_x, line, attr)
+                    if right_w > 45:
+                        safe_addstr(stdscr, 5 + idx, col2_x + 36, p_desc[:right_w - 38], curses.A_DIM | curses.color_pair(1))
+
+        else:
+            cur_cat_name, cur_items = CATEGORIES[cat_idx]
+            safe_addstr(stdscr, 2, col2_x, f"CATALOG: {cur_cat_name.upper()}", curses.color_pair(3) | curses.A_BOLD)
+            safe_addstr(stdscr, 3, col2_x, "─" * right_w, curses.color_pair(1))
+
+            for idx, (pkg, name, desc) in enumerate(cur_items):
+                is_sel = (idx == item_idx)
+                attr = curses.color_pair(2) if is_sel else curses.color_pair(1)
+                inst = installed_cache.get(pkg, False)
+                badge = "[INSTALLED]" if inst else "[AVAILABLE]"
+                
+                line = f"{name:<24}  {badge}"
+                safe_addstr(stdscr, 5 + (idx * 2), col2_x, line, attr)
+                safe_addstr(stdscr, 6 + (idx * 2), col2_x + 2, desc[:right_w - 4], curses.A_DIM | curses.color_pair(1))
+
+        # Active Terminal Log Box (Bottom)
+        log_y = h - 6
+        safe_addstr(stdscr, log_y, 2, "┌" + "─" * (w - 6) + "┐", curses.color_pair(1))
+        safe_addstr(stdscr, log_y, 4, " [ LIVE ACTIVITY LOG ] ", curses.color_pair(2))
+        
+        if proc_lines:
+            for l_idx, pline in enumerate(proc_lines[-3:]):
+                safe_addstr(stdscr, log_y + 1 + l_idx, 4, pline[:w - 8], curses.color_pair(1))
+        else:
+            safe_addstr(stdscr, log_y + 1, 4, f">> {status_msg}", curses.color_pair(1))
+
+        # Bottom Controls Bar
+        safe_addstr(stdscr, h - 2, 3, " [ENTER] Install   [X] Remove   [S] Search   [U] Update All   [Q] Exit ", curses.color_pair(2))
+
+        stdscr.refresh()
+
+        try:
+            ch = stdscr.getch()
+            if ch in (ord('q'), ord('Q'), 27):
+                if in_search:
+                    in_search = False
+                    item_idx = 0
+                else:
+                    break
+            elif ch in (ord('\t'), curses.KEY_BTAB):
+                cat_idx = (cat_idx + 1) % len(CATEGORIES)
+                item_idx = 0
+            elif ch in (curses.KEY_UP, ord('k')):
+                if item_idx > 0:
+                    item_idx -= 1
+            elif ch in (curses.KEY_DOWN, ord('j')):
+                max_items = len(search_results) if in_search else len(CATEGORIES[cat_idx][1])
+                if item_idx < max_items - 1:
+                    item_idx += 1
+            elif ch in (curses.KEY_LEFT, ord('h')):
+                if not in_search and cat_idx > 0:
+                    cat_idx -= 1
+                    item_idx = 0
+            elif ch in (curses.KEY_RIGHT, ord('l')):
+                if not in_search and cat_idx < len(CATEGORIES) - 1:
+                    cat_idx += 1
+                    item_idx = 0
+            elif ch in (ord('s'), ord('S')):
+                curses.echo()
+                curses.curs_set(1)
+                safe_addstr(stdscr, h - 2, 3, "Search Arch Packages: " + " " * 30, curses.color_pair(3))
+                stdscr.refresh()
+                query = stdscr.getstr(h - 2, 25, 40).decode("utf-8").strip()
+                curses.noecho()
+                curses.curs_set(0)
+                if query:
+                    search_query = query
+                    in_search = True
+                    status_msg = f"Searching Arch repositories for '{query}'..."
+                    stdscr.refresh()
+                    search_results = search_pacman(query)
+                    item_idx = 0
+            elif ch in (ord('u'), ord('U')):
+                if not active_proc:
+                    status_msg = "Running full system update (pacman -Syu)..."
+                    proc_lines = ["[+] Starting pacman -Syu..."]
+                    active_proc = update_all_system()
+            elif ch in (10, 13, curses.KEY_ENTER):
+                if not active_proc:
+                    target_pkg = None
+                    if in_search and search_results:
+                        target_pkg = search_results[item_idx][0]
+                    elif not in_search:
+                        target_pkg = CATEGORIES[cat_idx][1][item_idx][0]
+
+                    if target_pkg:
+                        status_msg = f"Installing package '{target_pkg}'..."
+                        proc_lines = [f"[+] Launching pacman -S --noconfirm {target_pkg}..."]
+                        active_proc = install_pkg(target_pkg)
+            elif ch in (ord('x'), ord('X')):
+                if not active_proc:
+                    target_pkg = None
+                    if in_search and search_results:
+                        target_pkg = search_results[item_idx][0]
+                    elif not in_search:
+                        target_pkg = CATEGORIES[cat_idx][1][item_idx][0]
+
+                    if target_pkg:
+                        status_msg = f"Removing package '{target_pkg}'..."
+                        proc_lines = [f"[+] Launching pacman -Rns --noconfirm {target_pkg}..."]
+                        active_proc = remove_pkg(target_pkg)
+        except KeyboardInterrupt:
+            break
+
+def main():
+    os.environ.setdefault("TERM", "xterm-256color")
+    try:
+        curses.wrapper(tui_main)
+    except Exception as e:
+        print(f"[-] Kortex App Hub error: {e}")
+
+if __name__ == "__main__":
+    main()

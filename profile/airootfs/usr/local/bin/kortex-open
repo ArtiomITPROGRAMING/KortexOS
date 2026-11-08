@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# KORTEX-OS POPUP LAUNCHER
+# Unsets Kitty parent session variables and aligns popup centered on screen
+# ==============================================================================
+
+set -eu
+
+target="${1:-settings}"
+
+# UNSET KITTY INHERITED SESSION VARIABLES
+unset KITTY_WINDOW_ID || true
+unset KITTY_PID || true
+unset KITTY_PUBLIC_KEY || true
+unset KITTY_INSTALLATION_DIR || true
+
+if [ -z "${XDG_RUNTIME_DIR:-}" ]; then
+    export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+fi
+if [ -z "${WAYLAND_DISPLAY:-}" ]; then
+    export WAYLAND_DISPLAY="wayland-1"
+fi
+if [ -z "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
+    for d in "$XDG_RUNTIME_DIR"/hypr/*; do
+        if [ -d "$d" ] || [ -S "$d/.socket.sock" ]; then
+            export HYPRLAND_INSTANCE_SIGNATURE="$(basename "$d")"
+            break
+        fi
+    done
+fi
+
+cls=""
+case "$target" in
+    settings|setting)
+        kitty --instance-group="popup_settings_$RANDOM" --class kortex-settings -o background_opacity=1.0 -e /usr/local/bin/kortex-settings &
+        cls="kortex-settings"
+        ;;
+    ai|assistant)
+        kitty --instance-group="popup_ai_$RANDOM" --class kortex-ai -o background_opacity=1.0 -e /usr/local/bin/kortex-ai &
+        cls="kortex-ai"
+        ;;
+    install|installer)
+        kitty --instance-group="popup_install_$RANDOM" --class kortex-install -o background_opacity=1.0 -e sudo /usr/local/bin/kortex-install &
+        cls="kortex-install"
+        ;;
+    net-guard|guard|security)
+        kitty --instance-group="popup_guard_$RANDOM" --class kortex-net-guard -o background_opacity=1.0 -e /usr/local/bin/kortex-net-guard &
+        cls="kortex-net-guard"
+        ;;
+    link|deck|phone)
+        kitty --instance-group="popup_link_$RANDOM" --class kortex-link -o background_opacity=1.0 -e /usr/local/bin/kortex-link &
+        cls="kortex-link"
+        ;;
+    vault|backup|snapshot)
+        kitty --instance-group="popup_vault_$RANDOM" --class kortex-vault -o background_opacity=1.0 -e /usr/local/bin/kortex-vault &
+        cls="kortex-vault"
+        ;;
+    store|hub|market)
+        kitty --instance-group="popup_store_$RANDOM" --class kortex-store -o background_opacity=1.0 -e /usr/local/bin/kortex-store &
+        cls="kortex-store"
+        ;;
+    tour|guide|welcome|help)
+        kitty --instance-group="popup_tour_$RANDOM" --class kortex-tour -o background_opacity=1.0 -e /usr/local/bin/kortex-tour &
+        cls="kortex-tour"
+        ;;
+    lock|locker)
+        /usr/local/bin/kortex-lock &
+        exit 0
+        ;;
+    *)
+        echo "Usage: kortex-open <settings|ai|install|net-guard|link|vault|store|lock>"
+        exit 1
+        ;;
+esac
+
+if [ -n "$cls" ]; then
+    /usr/local/bin/kortex-align-popup "$cls" &
+fi
+
+exit 0

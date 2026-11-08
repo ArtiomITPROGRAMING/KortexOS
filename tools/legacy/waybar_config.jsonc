@@ -1,0 +1,41 @@
+{
+    "layer": "top",
+    "position": "top",
+    "height": 26,
+    "modules-left": ["custom/distro"],
+    "modules-center": ["custom/logo"],
+    "modules-right": ["network", "cpu", "memory", "disk", "battery", "clock"],
+
+    "custom/distro": {
+        "format": "WORKSPACE 1"
+    },
+    "custom/logo": {
+        "format": "[KORTEX-OS]"
+    },
+    "network": {
+        "format-wifi": "Net: {signalStrength}%",
+        "format-ethernet": "Net: {ipaddr}",
+        "format-disconnected": "Net: Offline",
+        "tooltip-format": "{ifname}: {ipaddr}"
+    },
+    "cpu": {
+        "interval": 2,
+        "format": "CPU: {usage}%"
+    },
+    "memory": {
+        "interval": 2,
+        "format": "RAM: {percentage}%"
+    },
+    "disk": {
+        "interval": 30,
+        "format": "Disk: {percentage_used}%"
+    },
+    "battery": {
+        "format": "Battery: {capacity}%",
+        "format-charging": "Battery: {capacity}% [AC]"
+    },
+    "clock": {
+        "interval": 1,
+        "format": "{:%H:%M:%S}"
+    }
+}

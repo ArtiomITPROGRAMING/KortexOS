@@ -1,0 +1,350 @@
+#!/usr/bin/env python3
+"""
+KortexOS Intelligence System (KIS) - Core Hardware & Telemetry Daemon
+Monitors bare-metal / virtual hardware, thermal states, power governors,
+and provides an IPC bus for KortexOS cyberpunk desktop modules.
+"""
+
+import os
+import sys
+import time
+import json
+import socket
+import threading
+import subprocess
+
+SOCKET_PATH = "/run/kortex/kis.sock"
+CACHE_PATH = "/run/kortex/telemetry.json"
+PROFILE_PATH = "/run/kortex/power_profile"
+
+current_telemetry = {
+    "timestamp": time.time(),
+    "virtual": False,
+    "hypervisor": "none",
+    "cpu": {
+        "cores": 4,
+        "load_pct": 0.0,
+        "freq_mhz": 0,
+        "temp_c": 40.0,
+        "governor": "balanced"
+    },
+    "gpu": {
+        "vendor": "Unknown",
+        "model": "Generic",
+        "driver": "unknown"
+    },
+    "memory": {
+        "total_mb": 0,
+        "used_mb": 0,
+        "pct": 0.0,
+        "zram_used_mb": 0
+    },
+    "battery": {
+        "present": False,
+        "pct": 100,
+        "status": "AC",
+        "watts": 0.0
+    },
+    "profile": "balanced"
+}
+
+lock = threading.Lock()
+
+def detect_hypervisor():
+    try:
+        res = subprocess.run(["systemd-detect-virt"], capture_output=True, text=True, timeout=1)
+        virt = res.stdout.strip()
+        if virt and virt != "none":
+            return True, virt
+    except Exception:
+        pass
+    return False, "none"
+
+def detect_gpu():
+    vendor = "Generic"
+    model = "VGA Adapter"
+    driver = "unknown"
+    try:
+        if os.path.exists("/sys/class/drm"):
+            cards = [c for c in os.listdir("/sys/class/drm") if c.startswith("card") and "-" not in c]
+            if cards:
+                card_path = f"/sys/class/drm/{cards[0]}/device"
+                if os.path.exists(f"{card_path}/uevent"):
+                    with open(f"{card_path}/uevent", "r") as f:
+                        for line in f:
+                            if line.startswith("DRIVER="):
+                                driver = line.strip().split("=")[1]
+                            elif line.startswith("PCI_ID="):
+                                pci_id = line.strip().split("=")[1].lower()
+                                if "8086" in pci_id:
+                                    vendor = "Intel"
+                                elif "1002" in pci_id or "1022" in pci_id:
+                                    vendor = "AMD"
+                                elif "10de" in pci_id:
+                                    vendor = "NVIDIA"
+                                elif "15ad" in pci_id or "80ee" in pci_id:
+                                    vendor = "VirtualBox/VMware"
+    except Exception:
+        pass
+    return vendor, model, driver
+
+def read_cpu_temp():
+    # 1. Thermal zones
+    try:
+        thermal_dir = "/sys/class/thermal"
+        if os.path.exists(thermal_dir):
+            for zone in os.listdir(thermal_dir):
+                if zone.startswith("thermal_zone"):
+                    temp_file = os.path.join(thermal_dir, zone, "temp")
+                    if os.path.exists(temp_file):
+                        with open(temp_file, "r") as f:
+                            val = int(f.read().strip())
+                            temp_c = val / 1000.0 if val > 1000 else float(val)
+                            if 15.0 < temp_c < 115.0:
+                                return round(temp_c, 1)
+    except Exception:
+        pass
+    
+    # 2. hwmon
+    try:
+        hwmon_dir = "/sys/class/hwmon"
+        if os.path.exists(hwmon_dir):
+            for hw in os.listdir(hwmon_dir):
+                p = os.path.join(hwmon_dir, hw)
+                for f_name in os.listdir(p):
+                    if f_name.startswith("temp") and f_name.endswith("_input"):
+                        with open(os.path.join(p, f_name), "r") as f:
+                            val = int(f.read().strip())
+                            temp_c = val / 1000.0 if val > 1000 else float(val)
+                            if 15.0 < temp_c < 115.0:
+                                return round(temp_c, 1)
+    except Exception:
+        pass
+    return 42.0
+
+def read_cpu_freq():
+    try:
+        cpufreq_dir = "/sys/devices/system/cpu/cpu0/cpufreq"
+        if os.path.exists(f"{cpufreq_dir}/scaling_cur_freq"):
+            with open(f"{cpufreq_dir}/scaling_cur_freq", "r") as f:
+                return int(int(f.read().strip()) / 1000)
+    except Exception:
+        pass
+    try:
+        with open("/proc/cpuinfo", "r") as f:
+            for line in f:
+                if "cpu MHz" in line:
+                    return int(float(line.split(":")[1].strip()))
+    except Exception:
+        pass
+    return 2400
+
+def read_battery():
+    bat_info = {"present": False, "pct": 100, "status": "AC", "watts": 0.0}
+    try:
+        base = "/sys/class/power_supply"
+        if os.path.exists(base):
+            bats = [b for b in os.listdir(base) if b.startswith("BAT")]
+            if bats:
+                bat = bats[0]
+                bat_path = os.path.join(base, bat)
+                bat_info["present"] = True
+                
+                # Capacity
+                if os.path.exists(f"{bat_path}/capacity"):
+                    with open(f"{bat_path}/capacity", "r") as f:
+                        bat_info["pct"] = int(f.read().strip())
+                
+                # Status
+                if os.path.exists(f"{bat_path}/status"):
+                    with open(f"{bat_path}/status", "r") as f:
+                        bat_info["status"] = f.read().strip()
+                
+                # Power in Watts
+                power_w = 0.0
+                if os.path.exists(f"{bat_path}/power_now"):
+                    with open(f"{bat_path}/power_now", "r") as f:
+                        power_w = int(f.read().strip()) / 1e6
+                elif os.path.exists(f"{bat_path}/current_now") and os.path.exists(f"{bat_path}/voltage_now"):
+                    with open(f"{bat_path}/current_now", "r") as fc, open(f"{bat_path}/voltage_now", "r") as fv:
+                        curr = int(fc.read().strip())
+                        volt = int(fv.read().strip())
+                        power_w = (curr * volt) / 1e12
+                bat_info["watts"] = round(power_w, 1)
+    except Exception:
+        pass
+    return bat_info
+
+def read_memory():
+    tot_mb = 1
+    avail_mb = 0
+    try:
+        with open("/proc/meminfo", "r") as f:
+            for line in f:
+                p = line.split()
+                if p[0] == "MemTotal:":
+                    tot_mb = int(p[1]) // 1024
+                elif p[0] == "MemAvailable:":
+                    avail_mb = int(p[1]) // 1024
+    except Exception:
+        pass
+    used_mb = max(0, tot_mb - avail_mb)
+    pct = round((used_mb / tot_mb) * 100.0, 1) if tot_mb > 0 else 0.0
+    return tot_mb, used_mb, pct
+
+def set_system_profile(profile):
+    profile = profile.lower()
+    if profile not in ("overdrive", "balanced", "stealth"):
+        return False, "Invalid profile. Choose: overdrive, balanced, stealth"
+
+    gov = "schedutil"
+    epp = "balance_performance"
+
+    if profile == "overdrive":
+        gov = "performance"
+        epp = "performance"
+    elif profile == "stealth":
+        gov = "powersave"
+        epp = "power"
+    elif profile == "balanced":
+        gov = "schedutil"
+        epp = "balance_performance"
+
+    # Apply CPU Governor if supported
+    try:
+        for cpu in os.listdir("/sys/devices/system/cpu"):
+            if cpu.startswith("cpu") and cpu[3:].isdigit():
+                gov_path = f"/sys/devices/system/cpu/{cpu}/cpufreq/scaling_governor"
+                if os.path.exists(gov_path):
+                    try:
+                        with open(gov_path, "w") as f:
+                            f.write(gov)
+                    except Exception:
+                        pass
+                epp_path = f"/sys/devices/system/cpu/{cpu}/cpufreq/energy_performance_preference"
+                if os.path.exists(epp_path):
+                    try:
+                        with open(epp_path, "w") as f:
+                            f.write(epp)
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+
+    with open(PROFILE_PATH, "w") as f:
+        f.write(profile)
+
+    with lock:
+        current_telemetry["profile"] = profile
+        current_telemetry["cpu"]["governor"] = profile
+
+    return True, f"Profile set to [{profile.upper()}]"
+
+def telemetry_collector_thread():
+    is_virt, virt_name = detect_hypervisor()
+    gpu_vendor, gpu_model, gpu_driver = detect_gpu()
+
+    # Load initial profile
+    initial_profile = "balanced"
+    if os.path.exists(PROFILE_PATH):
+        try:
+            with open(PROFILE_PATH, "r") as f:
+                initial_profile = f.read().strip()
+        except Exception:
+            pass
+
+    set_system_profile(initial_profile)
+
+    while True:
+        try:
+            temp = read_cpu_temp()
+            freq = read_cpu_freq()
+            tot_mb, used_mb, mem_pct = read_memory()
+            bat = read_battery()
+
+            with lock:
+                current_telemetry["timestamp"] = time.time()
+                current_telemetry["virtual"] = is_virt
+                current_telemetry["hypervisor"] = virt_name
+                current_telemetry["cpu"]["temp_c"] = temp
+                current_telemetry["cpu"]["freq_mhz"] = freq
+                current_telemetry["cpu"]["cores"] = os.cpu_count() or 4
+                current_telemetry["gpu"]["vendor"] = gpu_vendor
+                current_telemetry["gpu"]["model"] = gpu_model
+                current_telemetry["gpu"]["driver"] = gpu_driver
+                current_telemetry["memory"]["total_mb"] = tot_mb
+                current_telemetry["memory"]["used_mb"] = used_mb
+                current_telemetry["memory"]["pct"] = mem_pct
+                current_telemetry["battery"] = bat
+
+                # Write atomic JSON snapshot for fast reader modules
+                tmp_cache = CACHE_PATH + ".tmp"
+                with open(tmp_cache, "w") as f:
+                    json.dump(current_telemetry, f, indent=2)
+                os.replace(tmp_cache, CACHE_PATH)
+
+        except Exception as e:
+            pass
+
+        time.sleep(1.0)
+
+def handle_client(conn):
+    try:
+        data = conn.recv(1024).decode().strip()
+        if not data:
+            conn.close()
+            return
+        
+        req = json.loads(data)
+        action = req.get("action", "get")
+
+        if action == "get":
+            with lock:
+                res = json.dumps(current_telemetry)
+            conn.sendall(res.encode() + b"\n")
+        elif action == "set_profile":
+            prof = req.get("profile", "balanced")
+            ok, msg = set_system_profile(prof)
+            conn.sendall(json.dumps({"success": ok, "message": msg}).encode() + b"\n")
+        else:
+            conn.sendall(json.dumps({"error": "Unknown action"}).encode() + b"\n")
+    except Exception as e:
+        try:
+            conn.sendall(json.dumps({"error": str(e)}).encode() + b"\n")
+        except Exception:
+            pass
+    finally:
+        conn.close()
+
+def ipc_server_thread():
+    os.makedirs(os.path.dirname(SOCKET_PATH), exist_ok=True)
+    if os.path.exists(SOCKET_PATH):
+        try:
+            os.remove(SOCKET_PATH)
+        except Exception:
+            pass
+
+    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    server.bind(SOCKET_PATH)
+    os.chmod(SOCKET_PATH, 0o777)
+    server.listen(10)
+
+    while True:
+        try:
+            conn, _ = server.accept()
+            t = threading.Thread(target=handle_client, args=(conn,), daemon=True)
+            t.start()
+        except Exception:
+            time.sleep(0.1)
+
+def main():
+    os.makedirs("/run/kortex", exist_ok=True)
+    os.chmod("/run/kortex", 0o777)
+
+    t_tel = threading.Thread(target=telemetry_collector_thread, daemon=True)
+    t_tel.start()
+
+    ipc_server_thread()
+
+if __name__ == "__main__":
+    main()

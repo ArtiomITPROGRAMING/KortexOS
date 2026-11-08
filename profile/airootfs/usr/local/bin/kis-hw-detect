@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# KORTEX-OS HARDWARE DETECTION & LOW-LEVEL INITIALIZATION
+# Auto-tunes kernel parameters, GPU drivers, ZRAM, and display refresh rates
+# ==============================================================================
+
+set -euo pipefail
+
+echo "[KIS] Initializing KortexOS Hardware Intelligence Engine..."
+
+# 1. ZRAM High-Speed Compressed Swap Setup
+if [ ! -b /dev/zram0 ]; then
+    echo "[KIS] Setting up dynamic ZRAM swap (zstd algorithm)..."
+    modprobe zram num_devices=1 2>/dev/null || true
+    if [ -f /sys/block/zram0/comp_algorithm ]; then
+        echo zstd > /sys/block/zram0/comp_algorithm 2>/dev/null || true
+    fi
+    
+    # Calculate 50% of Total RAM
+    total_mem_kb=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+    zram_size_bytes=$(( (total_mem_kb / 2) * 1024 ))
+    
+    if [ -f /sys/block/zram0/disksize ]; then
+        echo "$zram_size_bytes" > /sys/block/zram0/disksize 2>/dev/null || true
+        mkswap /dev/zram0 >/dev/null 2>&1 || true
+        swapon -p 100 /dev/zram0 >/dev/null 2>&1 || true
+        echo "[KIS] ZRAM active: $(( zram_size_bytes / 1024 / 1024 )) MB compressed memory swap."
+    fi
+fi
+
+# 2. Virtual vs Bare Metal Environment Configuration
+VIRT="none"
+if command -v systemd-detect-virt >/dev/null 2>&1; then
+    VIRT=$(systemd-detect-virt 2>/dev/null || echo "none")
+fi
+
+ENV_FILE="/etc/profile.d/kortex-hw-env.sh"
+mkdir -p /etc/profile.d
+
+cat > "$ENV_FILE" << 'EOF'
+# KortexOS Hardware Auto-tuned Environment
+EOF
+
+if [ "$VIRT" != "none" ]; then
+    echo "[KIS] Hypervisor detected: $VIRT. Applying virtualization optimizations."
+    cat >> "$ENV_FILE" << 'EOF'
+export KORTEX_VIRT="true"
+export WLR_NO_HARDWARE_CURSORS=1
+export WLR_RENDERER_ALLOW_SOFTWARE=1
+export LIBGL_ALWAYS_SOFTWARE=1
+EOF
+else
+    echo "[KIS] Bare metal detected. Enabling full hardware acceleration."
+    cat >> "$ENV_FILE" << 'EOF'
+export KORTEX_VIRT="false"
+export WLR_NO_HARDWARE_CURSORS=0
+EOF
+
+    # Detect GPU vendor via lspci
+    if command -v lspci >/dev/null 2>&1; then
+        if lspci | grep -i "vga\|3d\|display" | grep -i "intel" >/dev/null 2>&1; then
+            echo "[KIS] Intel Graphics detected. Setting iHD media driver."
+            echo "export LIBVA_DRIVER_NAME=iHD" >> "$ENV_FILE"
+        fi
+        if lspci | grep -i "vga\|3d\|display" | grep -i "amd\|radeon" >/dev/null 2>&1; then
+            echo "[KIS] AMD Radeon detected. Setting radeonsi drivers."
+            echo "export LIBVA_DRIVER_NAME=radeonsi" >> "$ENV_FILE"
+            echo "export VDPAU_DRIVER=radeonsi" >> "$ENV_FILE"
+        fi
+        if lspci | grep -i "vga\|3d\|display" | grep -i "nvidia" >/dev/null 2>&1; then
+            echo "[KIS] NVIDIA GPU detected. Configuring PRIME render offloading."
+            echo "export __NV_PRIME_RENDER_OFFLOAD=1" >> "$ENV_FILE"
+            echo "export __GLX_VENDOR_LIBRARY_NAME=nvidia" >> "$ENV_FILE"
+        fi
+    fi
+fi
+
+# 3. Touchpad Tuning (Natural scroll, tap to click)
+mkdir -p /etc/udev/rules.d
+cat > /etc/udev/rules.d/99-kortex-touchpad.rules << 'EOF'
+ACTION=="add|change", KERNEL=="event*", ATTRS{name}=="*Touchpad*", ENV{LIBINPUT_ATTR_KEYBOARD_TOUCHPAD}=="1"
+EOF
+
+# 4. Low-latency Kernel Audio (PipeWire quantum tuning)
+mkdir -p /etc/pipewire/pipewire.conf.d
+cat > /etc/pipewire/pipewire.conf.d/10-kortex-quantum.conf << 'EOF'
+context.properties = {
+    default.clock.rate = 48000
+    default.clock.quantum = 256
+    default.clock.min-quantum = 128
+    default.clock.max-quantum = 1024
+}
+EOF
+
+echo "[KIS] Hardware tuning complete."
+exit 0

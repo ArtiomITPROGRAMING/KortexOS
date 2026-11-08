@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# KORTEX-PLUGIN-STATUS: Waybar plugin integration script
+# Collects status from ~/.config/kortex/plugins/
+# ==============================================================================
+
+set -u
+
+STATUS_FILE="/run/kortex/plugin_status"
+USER_STATUS="${HOME}/.config/kortex/plugins/status.txt"
+PLUGINS_DIR="${HOME}/.config/kortex/plugins"
+
+count=0
+if [ -d "$PLUGINS_DIR" ]; then
+    count=$(find "$PLUGINS_DIR" -maxdepth 1 -type f -executable 2>/dev/null | wc -l)
+fi
+
+if [ -f "$STATUS_FILE" ] && [ -s "$STATUS_FILE" ]; then
+    txt=$(head -n 1 "$STATUS_FILE")
+    echo "{\"text\": \"🔌 $txt\", \"tooltip\": \"Kortex Plugin Status ($count active)\", \"class\": \"plugin-active\"}"
+elif [ -f "$USER_STATUS" ] && [ -s "$USER_STATUS" ]; then
+    txt=$(head -n 1 "$USER_STATUS")
+    echo "{\"text\": \"🔌 $txt\", \"tooltip\": \"Kortex Plugin: $txt\", \"class\": \"plugin-active\"}"
+elif [ "$count" -gt 0 ]; then
+    echo "{\"text\": \"🔌 [$count PLUGINS]\", \"tooltip\": \"Kortex Plugins: $count available in ~/.config/kortex/plugins/\", \"class\": \"plugins\"}"
+else
+    echo "{\"text\": \"\", \"tooltip\": \"No active plugins in ~/.config/kortex/plugins/\", \"class\": \"none\"}"
+fi

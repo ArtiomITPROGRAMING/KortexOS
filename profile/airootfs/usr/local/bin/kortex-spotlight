@@ -1,0 +1,227 @@
+#!/usr/bin/env python3
+"""
+KORTEX-SPOTLIGHT: Instant Unified Center Search, Calculator & Action HUD
+Triggered via Super + Space (MacBook Spotlight UX on Arch Linux)
+"""
+
+import sys
+import os
+import re
+import math
+import glob
+import subprocess
+
+def get_apps():
+    apps = {}
+    dirs = [
+        "/usr/share/applications",
+        os.path.expanduser("~/.local/share/applications")
+    ]
+    for d in dirs:
+        if not os.path.exists(d):
+            continue
+        for df in glob.glob(os.path.join(d, "*.desktop")):
+            try:
+                name = None
+                exec_cmd = None
+                icon = ""
+                with open(df, "r", encoding="utf-8", errors="ignore") as f:
+                    for line in f:
+                        if line.startswith("Name=") and not name:
+                            name = line.split("=", 1)[1].strip()
+                        elif line.startswith("Exec=") and not exec_cmd:
+                            exec_cmd = line.split("=", 1)[1].strip().split("%")[0].strip()
+                        elif line.startswith("NoDisplay=true"):
+                            name = None
+                            break
+                if name and exec_cmd:
+                    apps[f"⚡ App: {name}"] = exec_cmd
+            except Exception:
+                pass
+    return apps
+
+def evaluate_math(expr):
+    cleaned = expr.strip()
+    if not re.match(r'^[0-9\+\-\*\/\%\^\(\)\.\s\,a-zA-Z]+$', cleaned):
+        return None
+    # Allowed math functions
+    safe_dict = {
+        "sin": math.sin, "cos": math.cos, "tan": math.tan,
+        "sqrt": math.sqrt, "log": math.log, "log10": math.log10,
+        "pi": math.pi, "e": math.e, "pow": math.pow, "abs": abs,
+        "round": round
+    }
+    try:
+        # replace ^ with **
+        py_expr = cleaned.replace("^", "**")
+        val = eval(py_expr, {"__builtins__": None}, safe_dict)
+        return str(val)
+    except Exception:
+        return None
+
+def notify(title, msg):
+    try:
+        subprocess.run(["notify-send", "-a", "KORTEX SPOTLIGHT", "-t", "3000", title, msg], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        pass
+
+def copy_clipboard(text):
+    try:
+        p = subprocess.Popen(["wl-copy"], stdin=subprocess.PIPE)
+        p.communicate(input=text.encode("utf-8"))
+    except Exception:
+        pass
+
+def main():
+    apps = get_apps()
+
+    # Pre-canned quick commands
+    commands = {
+        "📖 System Tour & Guide: Interactive Navigator": "/usr/local/bin/kortex-open tour",
+        "⚙️ Settings: Kortex Customization Studio": "/usr/local/bin/kortex-settings",
+        "🎨 Theme: Cyber Cyan (Neon Blue)": "/usr/local/bin/kortex-theme-apply --theme cyan",
+        "🎨 Theme: Tokyo Night (Indigo & Lavender)": "/usr/local/bin/kortex-theme-apply --theme tokyonight",
+        "🎨 Theme: Dracula (Gothic Violet & Pink)": "/usr/local/bin/kortex-theme-apply --theme dracula",
+        "🎨 Theme: Matrix (Phosphor Green)": "/usr/local/bin/kortex-theme-apply --theme matrix",
+        "🎨 Theme: Amber CRT (Vintage 80s)": "/usr/local/bin/kortex-theme-apply --theme amber",
+        "🎨 Theme: Mono Tron (Minimalist White)": "/usr/local/bin/kortex-theme-apply --theme mono",
+        "🎨 Theme: Crimson (Red Combat HUD)": "/usr/local/bin/kortex-theme-apply --theme crimson",
+        "🖥️ Layout: MacBook Pro Mode (Glass & Dock)": "/usr/local/bin/kortex-layout floating",
+        "🖥️ Layout: Cyber-Deck (eDEX 5-Panel Grid)": "/usr/local/bin/kortex-layout grid",
+        "🖥️ Layout: Pure Tiling (Dev Fullscreen)": "/usr/local/bin/kortex-layout tiling",
+        "🖼️ Wallpaper: Cyber Grid (Vector Tech)": "/usr/local/bin/kortex-wallpaper desktop grid",
+        "🖼️ Wallpaper: Cyber Glass (MacBook Mode)": "/usr/local/bin/kortex-wallpaper desktop glass",
+        "🖼️ Wallpaper: Pitch Black (OLED Zero)": "/usr/local/bin/kortex-wallpaper desktop black",
+        "⌨️ Cheatsheet: System Hotkeys (HUD)": "/usr/local/bin/kortex-help-hud",
+        "🔒 System: Lock Screen": "swaylock -f -c 000000 || hyprlock",
+        "🔄 System: Reboot": "systemctl reboot",
+        "🛑 System: Power Off": "systemctl poweroff"
+    }
+
+    candidates = list(commands.keys()) + sorted(list(apps.keys()))
+    prompt_text = "\n".join(candidates)
+
+    rofi_theme = """
+    * {
+        font: "JetBrainsMono Nerd Font 12";
+    }
+    window {
+        width: 680px;
+        border-radius: 14px;
+        border: 2px;
+        border-color: #00f0ff;
+        background-color: rgba(10, 12, 16, 0.92);
+        padding: 12px;
+        location: center;
+        anchor: center;
+    }
+    mainbox {
+        background-color: transparent;
+        spacing: 10px;
+    }
+    inputbar {
+        background-color: rgba(18, 22, 31, 0.85);
+        border-radius: 10px;
+        padding: 10px 14px;
+        children: [ prompt, entry ];
+    }
+    prompt {
+        text-color: #00f0ff;
+        font-weight: bold;
+        margin: 0 8px 0 0;
+    }
+    entry {
+        text-color: #ffffff;
+        placeholder: "Search apps, math (e.g. 42*8), theme matrix, wallpaper glass...";
+        placeholder-color: #6e7681;
+    }
+    listview {
+        lines: 8;
+        background-color: transparent;
+        spacing: 4px;
+    }
+    element {
+        border-radius: 8px;
+        padding: 8px 12px;
+        background-color: transparent;
+        text-color: #c9d1d9;
+    }
+    element selected {
+        background-color: rgba(0, 240, 255, 0.20);
+        text-color: #00f0ff;
+        border: 1px;
+        border-color: #00f0ff;
+    }
+    """
+
+    res = subprocess.run(
+        ["rofi", "-dmenu", "-i", "-p", "🔍 SPOTLIGHT", "-theme-str", rofi_theme],
+        input=prompt_text,
+        capture_output=True,
+        text=True
+    )
+
+    choice = res.stdout.strip()
+    if not choice:
+        sys.exit(0)
+
+    # 1. Check exact command match
+    if choice in commands:
+        cmd = commands[choice]
+        subprocess.Popen(cmd, shell=True)
+        sys.exit(0)
+
+    # 2. Check app match
+    if choice in apps:
+        cmd = apps[choice]
+        subprocess.Popen(cmd, shell=True)
+        sys.exit(0)
+
+    # 3. Check for Math Calculation
+    math_val = evaluate_math(choice)
+    if math_val is not None:
+        copy_clipboard(math_val)
+        notify("Calculator Result (Copied)", f"{choice} = {math_val}")
+        print(f"{choice} = {math_val}")
+        sys.exit(0)
+
+    # 4. Check Quick CLI patterns
+    lower = choice.lower().strip()
+    if lower in ("tour", "guide", "welcome", "help", "gid", "spravka"):
+        subprocess.Popen("/usr/local/bin/kortex-open tour", shell=True)
+        sys.exit(0)
+
+    if lower.startswith("theme "):
+        t_name = lower.split(" ", 1)[1].strip()
+        subprocess.run(["/usr/local/bin/kortex-theme-apply", "--theme", t_name])
+        notify("Kortex Theme", f"Applied theme: {t_name.upper()}")
+        sys.exit(0)
+
+    if lower.startswith("layout "):
+        l_name = lower.split(" ", 1)[1].strip()
+        if l_name in ("mac", "macbook", "floating", "float"):
+            subprocess.run(["/usr/local/bin/kortex-layout", "floating"])
+        elif l_name in ("grid", "cyber", "cyberdeck"):
+            subprocess.run(["/usr/local/bin/kortex-layout", "grid"])
+        elif l_name in ("tiling", "tile", "dev"):
+            subprocess.run(["/usr/local/bin/kortex-layout", "tiling"])
+        notify("Kortex Layout", f"Switched layout: {l_name.upper()}")
+        sys.exit(0)
+
+    if lower.startswith("wallpaper "):
+        w_target = choice.split(" ", 1)[1].strip()
+        subprocess.run(["/usr/local/bin/kortex-wallpaper", "desktop", w_target])
+        notify("Kortex Wallpaper", f"Updated desktop wallpaper: {w_target}")
+        sys.exit(0)
+
+    if lower.startswith("opacity "):
+        op_val = lower.split(" ", 1)[1].strip()
+        subprocess.run(["/usr/local/bin/kortex-theme-apply", "--opacity", op_val])
+        notify("Kortex Glass", f"Window opacity set to: {op_val}")
+        sys.exit(0)
+
+    # 5. Fallback: Run as shell command
+    subprocess.Popen(choice, shell=True)
+
+if __name__ == "__main__":
+    main()

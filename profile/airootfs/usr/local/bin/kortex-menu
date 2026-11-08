@@ -1,0 +1,130 @@
+#!/usr/bin/env python3
+"""
+KortexOS Main Start Menu (kortex-menu)
+Triggered by single-tap Super, Super+D, or Waybar [KORTEX] button.
+Displays pinned Kortex System Deck, User Plugins, and desktop applications via custom Rofi theme.
+"""
+
+import os
+import sys
+import glob
+import subprocess
+import shutil
+
+ROFI_THEME = os.path.expanduser("~/.config/rofi/kortex-start.rasi")
+FALLBACK_THEME = "/etc/skel/.config/rofi/kortex-start.rasi"
+PLUGINS_DIR = os.path.expanduser("~/.config/kortex/plugins")
+GLOBAL_PLUGINS_DIR = "/usr/share/kortex/plugins"
+
+PINNED_ITEMS = [
+    ("[+] Kortex App Hub (Software Center)", "/usr/local/bin/kortex-open store"),
+    ("[*] Kortex AI Assistant",             "/usr/local/bin/kortex-open ai"),
+    ("[#] Kortex Settings & Theme Studio",  "/usr/local/bin/kortex-open settings"),
+    ("[~] Switch Layout (Grid/Tile/Float)", "/usr/local/bin/kortex-layout next"),
+    ("[?] System Guide & Interactive Tour",  "/usr/local/bin/kortex-open tour"),
+    ("[?] Hotkeys Cheatsheet HUD (F1)",     "/usr/local/bin/kortex-help-hud"),
+    ("[!] Kortex Net Guard",                "/usr/local/bin/kortex-open net-guard"),
+    ("[=] Kortex Vault & Snapshots",        "/usr/local/bin/kortex-open vault"),
+    ("[>] Install KortexOS to Disk",        "/usr/local/bin/kortex-open install"),
+    ("[_] Launch Cyber Terminal (Kitty)",   "/usr/local/bin/kortex-launch kitty"),
+    ("[X] Power: Lock Station Gate",        "/usr/local/bin/kortex-lock"),
+    ("[X] Power: Reboot Station",           "systemctl reboot"),
+    ("[X] Power: Power Off Station",        "systemctl poweroff"),
+]
+
+def get_plugins():
+    plugins = {}
+    for d in [PLUGINS_DIR, GLOBAL_PLUGINS_DIR]:
+        if os.path.exists(d):
+            for path in glob.glob(f"{d}/*"):
+                if os.path.isfile(path) and os.access(path, os.X_OK):
+                    name = os.path.basename(path)
+                    plugins[f"[🔌 Plugin] {name}"] = path
+    return plugins
+
+def get_desktop_apps():
+    apps = {}
+    search_dirs = [
+        "/usr/share/applications",
+        os.path.expanduser("~/.local/share/applications"),
+        "/var/lib/flatpak/exports/share/applications"
+    ]
+    for d in search_dirs:
+        if os.path.exists(d):
+            for path in glob.glob(f"{d}/*.desktop"):
+                try:
+                    name, exec_cmd, nodisplay = None, None, False
+                    with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                        in_desktop = False
+                        for line in f:
+                            line = line.strip()
+                            if line == "[Desktop Entry]":
+                                in_desktop = True
+                                continue
+                            elif line.startswith("[") and line != "[Desktop Entry]":
+                                in_desktop = False
+                            if in_desktop:
+                                if line.startswith("Name=") and not name:
+                                    name = line.split("=", 1)[1].strip()
+                                elif line.startswith("Exec=") and not exec_cmd:
+                                    exec_cmd = line.split("=", 1)[1].strip()
+                                elif line.startswith("NoDisplay=true"):
+                                    nodisplay = True
+                    if name and exec_cmd and not nodisplay:
+                        clean_exec = " ".join([p for p in exec_cmd.split() if not p.startswith("%")])
+                        apps[name] = clean_exec
+                except Exception:
+                    pass
+    return apps
+
+def main():
+    theme = ROFI_THEME if os.path.exists(ROFI_THEME) else FALLBACK_THEME
+    desktop_apps = get_desktop_apps()
+    plugins = get_plugins()
+
+    menu_map = {}
+    options = []
+
+    # 1. Pinned Deck
+    for label, cmd in PINNED_ITEMS:
+        options.append(label)
+        menu_map[label] = cmd
+
+    # 2. User Plugins
+    if plugins:
+        options.append("───[ USER PLUGINS (~/.config/kortex/plugins) ]───")
+        menu_map["───[ USER PLUGINS (~/.config/kortex/plugins) ]───"] = ""
+        for p_label, p_cmd in plugins.items():
+            options.append(p_label)
+            menu_map[p_label] = p_cmd
+
+    # 3. Desktop Apps
+    options.append("──────────────[ ALL APPLICATIONS ]──────────────")
+    menu_map["──────────────[ ALL APPLICATIONS ]──────────────"] = ""
+
+    for name in sorted(desktop_apps.keys(), key=lambda s: s.lower()):
+        lbl = f"  {name}"
+        options.append(lbl)
+        menu_map[lbl] = desktop_apps[name]
+
+    input_text = "\n".join(options)
+
+    cmd = [
+        "rofi",
+        "-dmenu",
+        "-i",
+        "-p", "[ KORTEX-OS ]",
+        "-theme", theme
+    ]
+
+    try:
+        proc = subprocess.run(cmd, input=input_text, capture_output=True, text=True)
+        selected = proc.stdout.strip()
+        if selected and selected in menu_map and menu_map[selected]:
+            action = menu_map[selected]
+            subprocess.Popen(action, shell=True)
+    except Exception as e:
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()

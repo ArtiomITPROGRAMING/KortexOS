@@ -1,0 +1,215 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# KORTEX-CTL: Cyberpunk Desktop & Grid Controller
+# Manage layout, toggle modules, switch neon border themes on the fly
+# Compatible with Hyprland 0.57+ Lua Configuration
+# ==============================================================================
+
+set -euo pipefail
+
+THEME_LUA="$HOME/.config/hypr/theme.lua"
+mkdir -p "$(dirname "$THEME_LUA")"
+
+banner() {
+    cat << "EOF"
+┌────────────────────────────────────────────────────────┐
+│  [KORTEX-CTL] GRID & THEME CONTROL SUBSYSTEM           │
+└────────────────────────────────────────────────────────┘
+EOF
+}
+
+usage() {
+    banner
+    echo "Usage: kortex-ctl <command> [arguments]"
+    echo ""
+    echo "Commands:"
+    echo "  theme <preset|hex>     Change neon border & glow color on the fly"
+    echo "                         Presets: mono, tron, matrix, amber, crimson, purple"
+    echo "                         Custom hex: kortex-ctl theme ffffff 444444"
+    echo "  module toggle <name>   Toggle module on/off: pulse, net, files, term"
+    echo "  module show <name>     Launch module"
+    echo "  module hide <name>     Close module"
+    echo "  layout reset           Reset workspace to standard eDEX-UI grid"
+    echo "  status                 Display grid status and active theme"
+    echo ""
+    exit 1
+}
+
+ensure_hyprland_sig() {
+    if [ -z "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
+        local sig
+        sig=$(ls -td /run/user/"$(id -u)"/hypr/* 2>/dev/null | head -n 1 | xargs -r basename)
+        if [ -n "$sig" ]; then
+            export HYPRLAND_INSTANCE_SIGNATURE="$sig"
+        fi
+    fi
+}
+
+apply_hypr_theme() {
+    local active="$1"
+    local inactive="$2"
+    local shadow="${3:-${active}22}"
+
+    cat > "$THEME_LUA" << EOF
+return {
+    active = "rgba(${active}ff)",
+    inactive = "rgba(${inactive}ff)",
+    shadow = "rgba(${shadow})",
+}
+EOF
+
+    ensure_hyprland_sig
+
+    if command -v hyprctl >/dev/null 2>&1 && [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
+        hyprctl reload >/dev/null 2>&1 || true
+    fi
+
+    echo "[+] Theme updated: Active=#$active, Inactive=#$inactive"
+}
+
+cmd_theme() {
+    local target="${1:-}"
+    case "$target" in
+        mono|white)
+            apply_hypr_theme "ffffff" "444444" "ffffff22"
+            ;;
+        tron|cyan)
+            apply_hypr_theme "00ffff" "003344" "00ffff33"
+            ;;
+        matrix|green)
+            apply_hypr_theme "00ff66" "003311" "00ff6633"
+            ;;
+        amber|orange)
+            apply_hypr_theme "ffb000" "442a00" "ffb00033"
+            ;;
+        crimson|red)
+            apply_hypr_theme "ff0055" "440011" "ff005533"
+            ;;
+        purple|synth)
+            apply_hypr_theme "bd93f9" "281a40" "bd93f933"
+            ;;
+        *)
+            if [ -n "$target" ]; then
+                local act="${target#"#"}"
+                local inact="${2:-444444}"
+                inact="${inact#"#"}"
+                apply_hypr_theme "$act" "$inact" "${act}22"
+            else
+                echo "[-] Unknown preset. Use: mono, tron, matrix, amber, crimson, purple or HEX"
+                exit 1
+            fi
+            ;;
+    esac
+}
+
+cmd_module() {
+    local action="${1:-toggle}"
+    local mod="${2:-}"
+
+    case "$mod" in
+        pulse)
+            local class="kortex-pulse"
+            local launch_cmd="kitty --class kortex-pulse -e btop &"
+            ;;
+        net)
+            local class="kortex-net"
+            local launch_cmd="kitty --class kortex-net -e /usr/local/bin/kortex-net-monitor &"
+            ;;
+        files)
+            local class="kortex-files"
+            local launch_cmd="kitty --class kortex-files -e yazi &"
+            ;;
+        term)
+            local class="kortex-term"
+            local launch_cmd="kitty --class kortex-term &"
+            ;;
+        *)
+            echo "[-] Unknown module. Available: pulse, net, files, term"
+            exit 1
+            ;;
+    esac
+
+    local is_running=0
+    if pgrep -f "kitty --class $class" >/dev/null 2>&1; then
+        is_running=1
+    fi
+
+    case "$action" in
+        show)
+            if [ "$is_running" -eq 1 ]; then
+                echo "[!] Module '$mod' is already active."
+            else
+                echo "[+] Launching module '$mod'..."
+                eval "$launch_cmd"
+            fi
+            ;;
+        hide)
+            if [ "$is_running" -eq 1 ]; then
+                echo "[*] Closing module '$mod'..."
+                ensure_hyprland_sig
+                if command -v hyprctl >/dev/null 2>&1 && [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
+                    hyprctl dispatch closewindow "class:$class" >/dev/null 2>&1 || pkill -f "kitty --class $class"
+                else
+                    pkill -f "kitty --class $class"
+                fi
+            else
+                echo "[!] Module '$mod' is not running."
+            fi
+            ;;
+        toggle)
+            if [ "$is_running" -eq 1 ]; then
+                cmd_module hide "$mod"
+            else
+                cmd_module show "$mod"
+            fi
+            ;;
+        *)
+            echo "[-] Unknown action. Available: show, hide, toggle"
+            exit 1
+            ;;
+    esac
+}
+
+cmd_status() {
+    banner
+    echo ":: MODULE RUNTIME STATUS"
+    for m in pulse net files term; do
+        if pgrep -f "kitty --class kortex-$m" >/dev/null 2>&1; then
+            printf "  %-12s [ ACTIVE / TILED ]\n" "kortex-$m"
+        else
+            printf "  %-12s [ INACTIVE / HIDDEN ]\n" "kortex-$m"
+        fi
+    done
+    echo ""
+    echo ":: CURRENT THEME CONFIGURATION"
+    if [ -f "$THEME_LUA" ]; then
+        grep "active" "$THEME_LUA" | sed 's/^/  /'
+    else
+        echo "  Default monochrome (#ffffff / #444444)"
+    fi
+}
+
+# Main command dispatch
+case "${1:-}" in
+    theme)
+        shift
+        cmd_theme "$@"
+        ;;
+    module)
+        shift
+        cmd_module "$@"
+        ;;
+    layout)
+        shift
+        if [ "${1:-default}" = "reset" ] || [ "${1:-default}" = "default" ]; then
+            echo "[*] Resetting Kortex Grid layout..."
+            /usr/local/bin/kortex-grid-init
+        fi
+        ;;
+    status)
+        cmd_status
+        ;;
+    *)
+        usage
+        ;;
+esac

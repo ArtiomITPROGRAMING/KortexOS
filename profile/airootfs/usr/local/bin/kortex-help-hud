@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# KORTEX-HELP-HUD: On-Screen Hotkey & Navigation Cheatsheet
+# Triggered by Super + F1 or Waybar Help button
+# ==============================================================================
+
+set -u
+
+# Ensure Wayland env
+if [ -z "${XDG_RUNTIME_DIR:-}" ]; then
+    export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+fi
+
+# Fetch current theme accent if available
+ACCENT="#00f0ff"
+if [ -f "$HOME/.config/hypr/theme.conf" ]; then
+    col=$(grep -oE '\$col_active[[:space:]]*=[[:space:]]*rgb\([0-9a-fA-F]+\)' "$HOME/.config/hypr/theme.conf" | grep -oE '[0-9a-fA-F]{6}' | head -n 1)
+    if [ -n "$col" ]; then
+        ACCENT="#$col"
+    fi
+fi
+
+if command -v rofi >/dev/null 2>&1; then
+    exec rofi -theme-str "
+    window {
+        width: 720px;
+        border: 2px;
+        border-color: ${ACCENT};
+        background-color: #05080c;
+        border-radius: 6px;
+        padding: 16px;
+        font: \"JetBrainsMono Nerd Font 11\";
+    }
+    mainbox {
+        background-color: transparent;
+        children: [ inputbar, listview ];
+    }
+    inputbar {
+        background-color: transparent;
+        children: [ prompt ];
+        margin: 0 0 12px 0;
+    }
+    prompt {
+        text-color: ${ACCENT};
+        font: \"JetBrainsMono Nerd Font Bold 12\";
+    }
+    listview {
+        lines: 16;
+        background-color: transparent;
+    }
+    element {
+        padding: 6px 10px;
+        background-color: transparent;
+        text-color: #e0e0e0;
+        border-radius: 3px;
+    }
+    element selected {
+        background-color: ${ACCENT};
+        text-color: #000000;
+        font: \"JetBrainsMono Nerd Font Bold 11\";
+    }
+    " -dmenu -i -p "┌─[ KORTEX HOTKEYS CHEATSHEET // Super+F1 ]" << 'EOF'
+[ Super + Tab ]            Switch Desktop Mode (Grid / Tiling / Floating)
+[ Super + Return ]         Launch Cyber Terminal (Kitty)
+[ Super + D / Tap Super ]  Open Kortex Start Menu
+[ Super + Q / Alt + F4 ]   Close Active Window
+[ Super + Space ]          Toggle Floating / Tiling for Active Window
+[ Super + F ]              Toggle Fullscreen Mode
+[ Super + S ]              Kortex Control Panel & Theme Studio
+[ Super + A ]              Kortex AI Cyber Assistant
+[ Super + P ]              Kortex App Store & Software Hub
+[ Super + E ]              Kortex File Grid Explorer (Yazi)
+[ Super + B ]              Launch Web Browser
+[ Super + L ]              Lock Station Gate (Kortex Lock)
+[ Super + N ]              Network Sentinel & Panic Lockdown
+[ Super + V ]              Kortex Snapshots & Crypto Vault
+[ Super + Shift + S ]      Interactive Screenshot to Clipboard (Slurp)
+[ Print ]                  Full Desktop Screenshot
+[ Super + Shift + R ]      Reload Hyprland & Waybar Configuration
+[ Super + Shift + G ]      Re-align & Spawn 5-Module Cyber-Deck Grid
+[ Super + 1 .. 5 ]         Switch to Workspaces 1-5 (Grid/Apps/Dev/Media/Sys)
+[ Esc / Enter ]            Dismiss this Cheatsheet HUD
+EOF
+else
+    # Fallback TUI HUD in kitty
+    exec kitty --class kortex-hud --title "Kortex Help HUD" -e bash -c '
+    echo "========================================================"
+    echo "         KORTEX-OS HOTKEY QUICK REFERENCE               "
+    echo "========================================================"
+    echo "  Super + Tab           : Switch Mode (Grid/Tiling/Float)"
+    echo "  Super + Return        : Launch Cyber Terminal"
+    echo "  Super + D / Tap Super : Start Menu"
+    echo "  Super + Q / Alt + F4  : Close Active Window"
+    echo "  Super + S             : Kortex Settings"
+    echo "  Super + A             : Kortex AI Assistant"
+    echo "  Super + F1            : Toggle this HUD"
+    echo ""
+    echo "Press any key to close..."
+    read -n 1 -s
+    '
+fi

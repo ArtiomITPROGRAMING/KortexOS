@@ -1,0 +1,301 @@
+#!/usr/bin/env python3
+"""
+KortexOS Audio Effects Engine (kortex-audio-fx)
+Synthesizes sci-fi and mechanical interface feedback on the fly.
+Intercepts physical keystrokes via evdev and Hyprland workspace/window events via socket2.
+"""
+
+import os
+import sys
+import time
+import math
+import wave
+import struct
+import json
+import random
+import signal
+import socket
+import glob
+import subprocess
+import threading
+
+CONFIG_PATH = "/run/kortex/audio-fx.json"
+CACHE_DIR = "/tmp/kortex-sfx"
+
+DEFAULT_CONFIG = {
+    "enabled": True,
+    "profile": "cyberpunk", # cyberpunk, mechanical, stealth
+    "volume": 0.35
+}
+
+def load_config():
+    if os.path.exists(CONFIG_PATH):
+        try:
+            with open(CONFIG_PATH, "r") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return dict(DEFAULT_CONFIG)
+
+def save_config(cfg):
+    os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
+    with open(CONFIG_PATH, "w") as f:
+        json.dump(cfg, f, indent=2)
+
+def gen_wav(path, duration, sample_rate=44100, generator_fn=None):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    total_samples = int(sample_rate * duration)
+    with wave.open(path, "w") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(sample_rate)
+        frames = bytearray()
+        for i in range(total_samples):
+            t = i / sample_rate
+            val = generator_fn(t, duration)
+            val = max(-1.0, min(1.0, val))
+            val_int = int(val * 32767.0)
+            frames.extend(struct.pack("<h", val_int))
+        wf.writeframes(frames)
+
+def synthesize_profiles():
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    
+    # 1. Cyberpunk Profile
+    # Normal key: fast crisp chirp
+    gen_wav(f"{CACHE_DIR}/cyber_key_normal.wav", 0.015, generator_fn=lambda t, d: 
+        math.sin(2 * math.pi * (1400 - 300 * (t / d)) * t) * math.exp(-t * 280))
+
+    # Enter key: double resonant confirmation chirp
+    gen_wav(f"{CACHE_DIR}/cyber_key_enter.wav", 0.035, generator_fn=lambda t, d:
+        (0.6 * math.sin(2 * math.pi * (800 + 1200 * (t / d)) * t) + 
+         0.4 * math.sin(2 * math.pi * (1600 + 400 * (t / d)) * t)) * math.exp(-t * 120))
+
+    # Space key: deep tactile pulse
+    gen_wav(f"{CACHE_DIR}/cyber_key_space.wav", 0.025, generator_fn=lambda t, d:
+        math.sin(2 * math.pi * 380 * t) * math.exp(-t * 160))
+
+    # Backspace key: descending cyber blip
+    gen_wav(f"{CACHE_DIR}/cyber_key_backspace.wav", 0.022, generator_fn=lambda t, d:
+        math.sin(2 * math.pi * (1100 - 600 * (t / d)) * t) * math.exp(-t * 200))
+
+    # Window Open: rising cyber warp
+    gen_wav(f"{CACHE_DIR}/cyber_win_open.wav", 0.045, generator_fn=lambda t, d:
+        math.sin(2 * math.pi * (400 + 1800 * ((t / d) ** 1.5)) * t) * math.exp(-t * 70))
+
+    # Window Close: falling sci-fi swoosh
+    gen_wav(f"{CACHE_DIR}/cyber_win_close.wav", 0.045, generator_fn=lambda t, d:
+        math.sin(2 * math.pi * (1800 - 1300 * ((t / d) ** 0.8)) * t) * math.exp(-t * 70))
+
+    # Workspace Switch: sleek dual blip
+    gen_wav(f"{CACHE_DIR}/cyber_workspace.wav", 0.030, generator_fn=lambda t, d:
+        math.sin(2 * math.pi * (1300 + 800 * (t / d)) * t) * math.exp(-t * 110))
+
+    # Alert / Denied: dual dissonant buzz
+    gen_wav(f"{CACHE_DIR}/cyber_alert.wav", 0.080, generator_fn=lambda t, d:
+        (0.5 * math.sin(2 * math.pi * 880 * t) + 0.5 * math.sin(2 * math.pi * 920 * t)) * math.exp(-t * 40))
+
+    # Granted: harmonious chord
+    gen_wav(f"{CACHE_DIR}/cyber_granted.wav", 0.070, generator_fn=lambda t, d:
+        (0.5 * math.sin(2 * math.pi * 1046.5 * t) + 0.5 * math.sin(2 * math.pi * 1318.5 * t)) * math.exp(-t * 50))
+
+    # 2. Mechanical Profile
+    # Normal key: clicky tactile switch
+    gen_wav(f"{CACHE_DIR}/mech_key_normal.wav", 0.016, generator_fn=lambda t, d:
+        (0.7 * (random.random() * 2 - 1) + 0.3 * math.sin(2 * math.pi * 2600 * t)) * math.exp(-t * 320))
+
+    # Enter key: heavy bottom-out
+    gen_wav(f"{CACHE_DIR}/mech_key_enter.wav", 0.032, generator_fn=lambda t, d:
+        (0.5 * math.sin(2 * math.pi * 220 * t) + 0.5 * (random.random() * 2 - 1)) * math.exp(-t * 140))
+
+    # Space key: hollow stabilizer bar clack
+    gen_wav(f"{CACHE_DIR}/mech_key_space.wav", 0.026, generator_fn=lambda t, d:
+        (0.6 * math.sin(2 * math.pi * 320 * t) + 0.4 * (random.random() * 2 - 1)) * math.exp(-t * 180))
+
+    # Backspace: snappy rebound
+    gen_wav(f"{CACHE_DIR}/mech_key_backspace.wav", 0.020, generator_fn=lambda t, d:
+        (0.6 * math.sin(2 * math.pi * 1800 * t) + 0.4 * (random.random() * 2 - 1)) * math.exp(-t * 240))
+
+    # Window Open: mechanical relay engage
+    gen_wav(f"{CACHE_DIR}/mech_win_open.wav", 0.035, generator_fn=lambda t, d:
+        (0.5 * math.sin(2 * math.pi * 650 * t) + 0.5 * math.sin(2 * math.pi * 1300 * t)) * math.exp(-t * 90))
+
+    # Window Close: mechanical relay release
+    gen_wav(f"{CACHE_DIR}/mech_win_close.wav", 0.035, generator_fn=lambda t, d:
+        (0.5 * math.sin(2 * math.pi * 500 * t) + 0.5 * math.sin(2 * math.pi * 1000 * t)) * math.exp(-t * 90))
+
+    # Workspace Switch: rotary selector detent
+    gen_wav(f"{CACHE_DIR}/mech_workspace.wav", 0.025, generator_fn=lambda t, d:
+        (0.6 * math.sin(2 * math.pi * 800 * t) + 0.4 * (random.random() * 2 - 1)) * math.exp(-t * 150))
+
+    # Alert / Granted
+    gen_wav(f"{CACHE_DIR}/mech_alert.wav", 0.070, generator_fn=lambda t, d:
+        math.sin(2 * math.pi * 440 * t) * math.exp(-t * 40))
+    gen_wav(f"{CACHE_DIR}/mech_granted.wav", 0.060, generator_fn=lambda t, d:
+        math.sin(2 * math.pi * 880 * t) * math.exp(-t * 50))
+
+class SoundPlayer:
+    def __init__(self):
+        self.player_cmd = "pw-play" if subprocess.run(["which", "pw-play"], capture_output=True).returncode == 0 else "aplay"
+
+    def play(self, sound_name, config):
+        if not config.get("enabled", True):
+            return
+        profile = config.get("profile", "cyberpunk")
+        if profile == "stealth":
+            return
+        
+        prefix = "cyber_" if profile == "cyberpunk" else "mech_"
+        wav_file = f"{CACHE_DIR}/{prefix}{sound_name}.wav"
+        if not os.path.exists(wav_file):
+            return
+        
+        try:
+            # Play in background process with zero blocking
+            subprocess.Popen(
+                [self.player_cmd, wav_file],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+        except Exception:
+            pass
+
+player = SoundPlayer()
+
+def keyboard_listener(config_ref):
+    try:
+        import evdev
+    except ImportError:
+        return
+
+    # Find keyboard input devices
+    devices = []
+    try:
+        for path in evdev.list_devices():
+            dev = evdev.InputDevice(path)
+            caps = dev.capabilities()
+            if evdev.ecodes.EV_KEY in caps:
+                # Keyboards generally have KEY_A (30) and KEY_ENTER (28)
+                keys = caps[evdev.ecodes.EV_KEY]
+                if 28 in keys and 30 in keys:
+                    devices.append(dev)
+    except Exception:
+        pass
+
+    if not devices:
+        return
+
+    import select
+    fd_to_dev = {dev.fd: dev for dev in devices}
+
+    while True:
+        try:
+            r, _, _ = select.select(fd_to_dev.keys(), [], [], 1.0)
+            for fd in r:
+                dev = fd_to_dev[fd]
+                for event in dev.read():
+                    if event.type == evdev.ecodes.EV_KEY and event.value == 1: # Key down
+                        code = event.code
+                        if code in (evdev.ecodes.KEY_ENTER, getattr(evdev.ecodes, "KEY_KPENTER", 96)):
+                            player.play("key_enter", config_ref)
+                        elif code == evdev.ecodes.KEY_SPACE:
+                            player.play("key_space", config_ref)
+                        elif code == evdev.ecodes.KEY_BACKSPACE:
+                            player.play("key_backspace", config_ref)
+                        else:
+                            player.play("key_normal", config_ref)
+        except Exception:
+            time.sleep(1.0)
+
+def hyprland_listener(config_ref):
+    xdg_runtime = os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
+    sig = os.environ.get("HYPRLAND_INSTANCE_SIGNATURE")
+    
+    if not sig:
+        hypr_dirs = glob.glob(f"{xdg_runtime}/hypr/*")
+        for d in hypr_dirs:
+            if os.path.exists(f"{d}/.socket2.sock"):
+                sig = os.path.basename(d)
+                break
+
+    if not sig:
+        return
+
+    socket_path = f"{xdg_runtime}/hypr/{sig}/.socket2.sock"
+    if not os.path.exists(socket_path):
+        return
+
+    while True:
+        try:
+            client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            client.connect(socket_path)
+            sock_file = client.makefile("r", encoding="utf-8", errors="ignore")
+            for line in sock_file:
+                line = line.strip()
+                if not line:
+                    continue
+                if line.startswith("openwindow>>"):
+                    player.play("win_open", config_ref)
+                elif line.startswith("closewindow>>"):
+                    player.play("win_close", config_ref)
+                elif line.startswith("workspace>>"):
+                    player.play("workspace", config_ref)
+        except Exception:
+            time.sleep(2.0)
+
+def daemon_main():
+    cfg = load_config()
+    synthesize_profiles()
+    
+    t_kb = threading.Thread(target=keyboard_listener, args=(cfg,), daemon=True)
+    t_hypr = threading.Thread(target=hyprland_listener, args=(cfg,), daemon=True)
+    t_kb.start()
+    t_hypr.start()
+
+    last_mtime = 0
+    while True:
+        time.sleep(1.0)
+        if os.path.exists(CONFIG_PATH):
+            try:
+                mt = os.path.getmtime(CONFIG_PATH)
+                if mt != last_mtime:
+                    last_mtime = mt
+                    new_cfg = load_config()
+                    cfg.update(new_cfg)
+            except Exception:
+                pass
+
+def main():
+    if len(sys.argv) > 1:
+        arg = sys.argv[1].lower()
+        if arg == "--toggle":
+            cfg = load_config()
+            cfg["enabled"] = not cfg.get("enabled", True)
+            save_config(cfg)
+            state = "ENABLED" if cfg["enabled"] else "DISABLED"
+            print(f"[+] Kortex Audio FX: {state}")
+            return
+        elif arg == "--profile" and len(sys.argv) > 2:
+            p = sys.argv[2].lower()
+            if p in ("cyberpunk", "mechanical", "stealth"):
+                cfg = load_config()
+                cfg["profile"] = p
+                save_config(cfg)
+                print(f"[+] Kortex Audio FX Profile set to: {p.upper()}")
+            else:
+                print("[-] Unknown profile. Choose: cyberpunk, mechanical, stealth")
+            return
+        elif arg == "--play" and len(sys.argv) > 2:
+            synthesize_profiles()
+            cfg = load_config()
+            player.play(sys.argv[2], cfg)
+            return
+        elif arg == "--status":
+            cfg = load_config()
+            print(f"Audio FX: {'ON' if cfg.get('enabled') else 'OFF'} | Profile: {cfg.get('profile', 'cyberpunk').upper()}")
+            return
+
+    daemon_main()
+
+if __name__ == "__main__":
+    main()

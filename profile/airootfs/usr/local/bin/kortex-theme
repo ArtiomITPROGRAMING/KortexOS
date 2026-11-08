@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Kortex Theme CLI shortcut
+exec /usr/local/bin/kortex-theme-apply "$@"

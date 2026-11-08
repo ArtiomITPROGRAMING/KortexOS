@@ -1,0 +1,304 @@
+#!/usr/bin/env python3
+"""
+KortexOS Network Radar, Geolocation & Security Guard (kortex-net-guard)
+Interactive TUI interface with subnet scanner, port sentinel, active connections
+and instantaneous Panic Lockdown defense switch.
+"""
+
+import os
+import sys
+import time
+import json
+import curses
+import socket
+import subprocess
+import threading
+import glob
+
+PANIC_STATE_FILE = "/run/kortex/panic.state"
+PREV_THEME_FILE = "/run/kortex/prev_theme.state"
+
+def is_panic_active():
+    return os.path.exists(PANIC_STATE_FILE)
+
+def toggle_panic_lockdown():
+    if is_panic_active():
+        # Deactivate Panic Lockdown
+        try:
+            subprocess.run(["iptables", "-P", "INPUT", "ACCEPT"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(["iptables", "-P", "FORWARD", "ACCEPT"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(["iptables", "-P", "OUTPUT", "ACCEPT"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(["iptables", "-F"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
+        if os.path.exists(PANIC_STATE_FILE):
+            os.remove(PANIC_STATE_FILE)
+        
+        # Restore theme
+        prev_theme = "mono"
+        if os.path.exists(PREV_THEME_FILE):
+            try:
+                with open(PREV_THEME_FILE, "r") as f:
+                    prev_theme = f.read().strip()
+                os.remove(PREV_THEME_FILE)
+            except Exception:
+                pass
+        subprocess.run(["kortex-ctl", "theme", prev_theme], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(["kortex-audio-fx", "--play", "granted"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return False
+    else:
+        # Activate Panic Lockdown
+        # Remember current theme
+        try:
+            res = subprocess.run(["kortex-ctl", "status"], capture_output=True, text=True)
+            for line in res.stdout.splitlines():
+                if "Active Theme:" in line:
+                    t = line.split(":", 1)[1].strip().lower()
+                    with open(PREV_THEME_FILE, "w") as f:
+                        f.write(t)
+                    break
+        except Exception:
+            pass
+
+        # Apply strict drop rules
+        try:
+            cmds = [
+                ["iptables", "-F"],
+                ["iptables", "-P", "INPUT", "DROP"],
+                ["iptables", "-P", "FORWARD", "DROP"],
+                ["iptables", "-P", "OUTPUT", "DROP"],
+                ["iptables", "-A", "INPUT", "-i", "lo", "-j", "ACCEPT"],
+                ["iptables", "-A", "OUTPUT", "-o", "lo", "-j", "ACCEPT"],
+                # Keep developer SSH ports accessible to prevent remote lock-out
+                ["iptables", "-A", "INPUT", "-p", "tcp", "--dport", "22", "-j", "ACCEPT"],
+                ["iptables", "-A", "OUTPUT", "-p", "tcp", "--sport", "22", "-j", "ACCEPT"],
+                ["iptables", "-A", "INPUT", "-p", "tcp", "--dport", "2222", "-j", "ACCEPT"],
+                ["iptables", "-A", "OUTPUT", "-p", "tcp", "--sport", "2222", "-j", "ACCEPT"],
+            ]
+            for cmd in cmds:
+                subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
+
+        os.makedirs(os.path.dirname(PANIC_STATE_FILE), exist_ok=True)
+        with open(PANIC_STATE_FILE, "w") as f:
+            f.write(str(time.time()))
+
+        # Red alert borders in Hyprland
+        try:
+            xdg_runtime = os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
+            sig = os.environ.get("HYPRLAND_INSTANCE_SIGNATURE")
+            if not sig:
+                for d in glob.glob(f"{xdg_runtime}/hypr/*"):
+                    if os.path.exists(f"{d}/.socket2.sock"):
+                        sig = os.path.basename(d)
+                        break
+            if sig:
+                env = os.environ.copy()
+                env["HYPRLAND_INSTANCE_SIGNATURE"] = sig
+                subprocess.run(["hyprctl", "keyword", "general:col.active_border", "rgba(ff0033ee)"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
+
+        subprocess.run(["kortex-audio-fx", "--play", "alert"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return True
+
+def get_open_ports():
+    ports = []
+    try:
+        res = subprocess.run(["ss", "-tulnpH"], capture_output=True, text=True, timeout=2)
+        for line in res.stdout.splitlines():
+            parts = line.split()
+            if len(parts) >= 5:
+                proto = parts[0].upper()
+                local_addr = parts[4]
+                proc = parts[6] if len(parts) > 6 else "-"
+                # Clean proc
+                if 'users:(("' in proc:
+                    proc = proc.split('users:(("')[1].split('"')[0]
+                ports.append((proto, local_addr, proc))
+    except Exception:
+        pass
+    return ports[:12]
+
+def get_active_connections():
+    conns = []
+    try:
+        res = subprocess.run(["ss", "-tunH"], capture_output=True, text=True, timeout=2)
+        for line in res.stdout.splitlines():
+            parts = line.split()
+            if len(parts) >= 5:
+                state = parts[0]
+                local = parts[3]
+                remote = parts[4]
+                # Filter loopback
+                if not remote.startswith("127.0.0.1") and not remote.startswith("::1"):
+                    conns.append((state, local, remote))
+    except Exception:
+        pass
+    return conns[:10]
+
+def scan_subnet():
+    hosts = []
+    try:
+        # Fast arp/neigh table lookup
+        res = subprocess.run(["ip", "neigh", "show"], capture_output=True, text=True, timeout=2)
+        for line in res.stdout.splitlines():
+            parts = line.split()
+            if len(parts) >= 4 and ("REACHABLE" in line or "DELAY" in line or "STALE" in line):
+                ip = parts[0]
+                dev = parts[2]
+                mac = parts[4] if len(parts) > 4 and ":" in parts[4] else "UNKNOWN"
+                status = parts[-1]
+                hosts.append((ip, mac, dev, status))
+    except Exception:
+        pass
+
+    # If few hosts, check default route and ping sweep top 5
+    if len(hosts) < 2:
+        try:
+            ip_r = subprocess.run(["ip", "route", "show", "default"], capture_output=True, text=True).stdout
+            if "default via" in ip_r:
+                gw = ip_r.split("default via")[1].split()[0]
+                hosts.insert(0, (gw, "GATEWAY-MAC", "def0", "REACHABLE"))
+        except Exception:
+            pass
+
+    return hosts[:12]
+
+def safe_addstr(win, y, x, text, attr=0):
+    max_y, max_x = win.getmaxyx()
+    if 0 <= y < max_y and 0 <= x < max_x:
+        try:
+            win.addstr(y, x, text[:max_x - x - 1], attr)
+        except curses.error:
+            pass
+
+def tui_main(stdscr):
+    curses.curs_set(0)
+    stdscr.nodelay(True)
+    stdscr.timeout(1000)
+
+    curses.start_color()
+    curses.use_default_colors()
+    curses.init_pair(1, curses.COLOR_WHITE, -1)
+    curses.init_pair(2, curses.COLOR_BLACK, curses.COLOR_WHITE)
+    curses.init_pair(3, curses.COLOR_RED, -1)
+    curses.init_pair(4, curses.COLOR_BLACK, curses.COLOR_RED)
+    curses.init_pair(5, curses.COLOR_CYAN, -1)
+    curses.init_pair(6, curses.COLOR_GREEN, -1)
+
+    cached_ports = get_open_ports()
+    cached_conns = get_active_connections()
+    cached_subnet = scan_subnet()
+    last_poll = time.time()
+
+    while True:
+        now = time.time()
+        if now - last_poll > 3.0:
+            last_poll = now
+            cached_ports = get_open_ports()
+            cached_conns = get_active_connections()
+            cached_subnet = scan_subnet()
+
+        panic = is_panic_active()
+        h, w = stdscr.getmaxyx()
+        stdscr.erase()
+
+        # Outer Frame
+        border_attr = curses.color_pair(3) | curses.A_BOLD if panic else curses.color_pair(1)
+        for y in range(h):
+            safe_addstr(stdscr, y, 0, "│", border_attr)
+            safe_addstr(stdscr, y, w - 1, "│", border_attr)
+        safe_addstr(stdscr, 0, 0, "┌" + "─" * (w - 2) + "┐", border_attr)
+        safe_addstr(stdscr, h - 1, 0, "└" + "─" * (w - 2) + "┘", border_attr)
+
+        # Title Bar
+        title = " [ KORTEX DEFENSE SENTINEL // NETWORK RADAR & FIREWALL SHIELD ] "
+        safe_addstr(stdscr, 0, max(2, (w - len(title)) // 2), title, curses.color_pair(2) if not panic else curses.color_pair(4))
+
+        # Panic Status Banner
+        if panic:
+            status_banner = " !! PANIC LOCKDOWN ACTIVE // ALL EXTERNAL TRAFFIC BLOCKED [NFT/IPTABLES DROP] !! "
+            safe_addstr(stdscr, 2, max(2, (w - len(status_banner)) // 2), status_banner, curses.color_pair(4) | curses.A_BLINK | curses.A_BOLD)
+        else:
+            status_banner = " SYSTEM STATUS: ALL NETWORK PERIMETERS SECURE // PACKET INSPECTOR LIVE "
+            safe_addstr(stdscr, 2, max(2, (w - len(status_banner)) // 2), status_banner, curses.color_pair(6) | curses.A_BOLD)
+
+        # Section 1: Subnet Radar
+        sec1_title = " [ 1. LOCAL SUBNET RADAR ] "
+        safe_addstr(stdscr, 4, 3, sec1_title, curses.color_pair(2))
+        safe_addstr(stdscr, 5, 3, "IP ADDRESS        MAC ADDRESS        DEV    STATUS", curses.color_pair(5))
+        safe_addstr(stdscr, 6, 3, "─" * min(55, w - 6), curses.color_pair(1))
+        
+        row_y = 7
+        for ip, mac, dev, status in cached_subnet[:6]:
+            if row_y < h - 14:
+                line = f"{ip:<16}  {mac:<17}  {dev:<5}  {status}"
+                safe_addstr(stdscr, row_y, 3, line, curses.color_pair(1))
+                row_y += 1
+
+        # Section 2: Port Sentinel
+        sec2_y = row_y + 1
+        if sec2_y < h - 10:
+            safe_addstr(stdscr, sec2_y, 3, " [ 2. PORT SENTINEL & BOUND PROCESSES ] ", curses.color_pair(2))
+            safe_addstr(stdscr, sec2_y + 1, 3, "PROTO  LOCAL BIND           BOUND SERVICE / PROCESS", curses.color_pair(5))
+            safe_addstr(stdscr, sec2_y + 2, 3, "─" * min(55, w - 6), curses.color_pair(1))
+            
+            p_y = sec2_y + 3
+            for proto, local, proc in cached_ports[:5]:
+                if p_y < h - 7:
+                    line = f"{proto:<5}  {local:<20} {proc}"
+                    safe_addstr(stdscr, p_y, 3, line, curses.color_pair(1))
+                    p_y += 1
+
+        # Section 3: Active Connections
+        sec3_y = max(row_y + 1, sec2_y + 9)
+        if sec3_y < h - 6:
+            safe_addstr(stdscr, sec3_y, 3, " [ 3. ACTIVE EXTERNAL CONNECTIONS ] ", curses.color_pair(2))
+            c_y = sec3_y + 1
+            for state, loc, rem in cached_conns[:4]:
+                if c_y < h - 4:
+                    line = f"• [{state}] {loc} -> {rem}"
+                    safe_addstr(stdscr, c_y, 3, line, curses.color_pair(1))
+                    c_y += 1
+
+        # Panic Button & Controls Bar
+        btn_y = h - 3
+        panic_btn = " [P] DISENGAGE LOCKDOWN " if panic else " [P] !! PANIC LOCKDOWN !!"
+        btn_attr = curses.color_pair(6) | curses.A_BOLD if panic else curses.color_pair(4) | curses.A_BOLD
+        safe_addstr(stdscr, btn_y, 3, panic_btn, btn_attr)
+
+        ctrl_text = "  [S] Rescan Subnet    [Q] Exit Sentinel"
+        safe_addstr(stdscr, btn_y, 3 + len(panic_btn) + 2, ctrl_text, curses.color_pair(1))
+
+        stdscr.refresh()
+
+        try:
+            ch = stdscr.getch()
+            if ch in (ord('q'), ord('Q'), 27):
+                break
+            elif ch in (ord('p'), ord('P')):
+                toggle_panic_lockdown()
+                last_poll = 0
+            elif ch in (ord('s'), ord('S'), ord('r'), ord('R')):
+                cached_subnet = scan_subnet()
+                cached_ports = get_open_ports()
+                cached_conns = get_active_connections()
+        except KeyboardInterrupt:
+            break
+
+def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "--panic":
+        active = toggle_panic_lockdown()
+        print(f"[!] KORTEX PANIC LOCKDOWN: {'ACTIVATED' if active else 'DEACTIVATED'}")
+        return
+
+    os.environ.setdefault("TERM", "xterm-256color")
+    try:
+        curses.wrapper(tui_main)
+    except Exception as e:
+        print(f"[-] Sentinel error: {e}")
+
+if __name__ == "__main__":
+    main()

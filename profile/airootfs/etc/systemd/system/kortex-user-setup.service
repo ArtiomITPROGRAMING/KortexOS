@@ -1,0 +1,13 @@
+[Unit]
+Description=KortexOS Live User Setup
+DefaultDependencies=no
+Before=basic.target getty@tty1.service
+After=systemd-sysusers.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/kortex-user-setup
+RemainAfterExit=yes
+
+[Install]
+WantedBy=basic.target

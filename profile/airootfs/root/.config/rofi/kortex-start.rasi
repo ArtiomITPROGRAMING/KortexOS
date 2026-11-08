@@ -1,0 +1,130 @@
+/**
+ * KortexOS Tron / eDEX-UI Start Menu Rofi Theme
+ * Pure #000000 black, crisp #ffffff borders, 0px border-radius, JetBrainsMono Nerd Font
+ */
+
+* {
+    background-color:   #000000;
+    text-color:         #ffffff;
+    font:               "JetBrainsMono Nerd Font 11";
+    border-color:       #ffffff;
+    spacing:            4px;
+    padding:            0px;
+    margin:             0px;
+}
+
+window {
+    anchor:             north west;
+    location:           north west;
+    x-offset:           12px;
+    y-offset:           34px;
+    width:              480px;
+    height:             620px;
+    border:             1px solid;
+    border-color:       #ffffff;
+    border-radius:      0px;
+    padding:            12px;
+    background-color:   #000000;
+    children:           [ inputbar, listview, mode-switcher ];
+}
+
+inputbar {
+    border:             1px solid;
+    border-color:       #444444;
+    padding:            8px 12px;
+    margin:             0px 0px 10px 0px;
+    children:           [ prompt, entry ];
+    background-color:   #050505;
+}
+
+prompt {
+    text-color:         #ffffff;
+    font:               "JetBrainsMono Nerd Font Bold 11";
+    margin:             0px 8px 0px 0px;
+}
+
+entry {
+    placeholder:        "Search station apps & commands...";
+    placeholder-color:  #555555;
+    text-color:         #ffffff;
+    cursor:             pointer;
+}
+
+listview {
+    border:             0px;
+    padding:            4px 0px;
+    lines:              14;
+    columns:            1;
+    scrollbar:          false;
+    spacing:            2px;
+}
+
+element {
+    padding:            7px 10px;
+    border-radius:      0px;
+    border:             0px;
+    background-color:   transparent;
+    text-color:         #bbbbbb;
+}
+
+element normal.normal {
+    background-color:   transparent;
+    text-color:         #cccccc;
+}
+
+element alternate.normal {
+    background-color:   transparent;
+    text-color:         #cccccc;
+}
+
+element selected {
+    background-color:   #222222;
+    text-color:         #ffffff;
+    border:             1px solid;
+    border-color:       #ffffff;
+}
+
+element selected.normal {
+    background-color:   #222222;
+    text-color:         #ffffff;
+    border:             1px solid;
+    border-color:       #ffffff;
+}
+
+element selected element-text {
+    background-color:   transparent;
+    text-color:         #ffffff;
+}
+
+element selected.normal element-text {
+    background-color:   transparent;
+    text-color:         #ffffff;
+}
+
+element-icon {
+    size:               18px;
+    margin:             0px 10px 0px 0px;
+    vertical-align:     0.5;
+}
+
+element-text {
+    vertical-align:     0.5;
+    text-color:         inherit;
+}
+
+mode-switcher {
+    border:             1px 0px 0px 0px;
+    border-color:       #333333;
+    padding:            8px 0px 0px 0px;
+}
+
+button {
+    padding:            6px;
+    border-radius:      0px;
+    text-color:         #777777;
+}
+
+button selected {
+    background-color:   #ffffff;
+    text-color:         #000000;
+}

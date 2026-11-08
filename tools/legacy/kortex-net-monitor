@@ -1,0 +1,211 @@
+#!/usr/bin/env python3
+"""
+KortexOS Network Telemetry & 3D Globe Monitor (eDEX-UI Tron Style)
+Smooth rotating 3D Earth globe with flight paths and live traffic waveform.
+Zero third-party dependencies.
+"""
+
+import curses
+import math
+import time
+import random
+import os
+
+# Continents rough bounding boxes for landmass generation (lat_min, lat_max, lon_min, lon_max)
+CONTINENTS = [
+    (15, 70, -165, -50),   # North America
+    (-55, 12, -80, -35),   # South America
+    (35, 70, -10, 42),     # Europe
+    (-35, 37, -18, 51),    # Africa
+    (10, 75, 42, 175),     # Asia
+    (-44, -10, 112, 154),  # Australia
+    (-90, -65, -180, 180), # Antarctica
+]
+
+NODES = [
+    (40.7, -74.0, "NYC"),
+    (51.5, -0.1,  "LON"),
+    (35.6, 139.6, "TYO"),
+    (-33.8, 151.2, "SYD"),
+]
+
+def is_land(lat_deg, lon_deg):
+    for (lat_min, lat_max, lon_min, lon_max) in CONTINENTS:
+        if lat_min <= lat_deg <= lat_max and lon_min <= lon_deg <= lon_max:
+            # Add coast noise
+            if ((int(lat_deg * 3) ^ int(lon_deg * 3)) % 7) != 0:
+                return True
+    return False
+
+def draw_net_panel(stdscr):
+    curses.curs_set(0)
+    stdscr.nodelay(True)
+    stdscr.timeout(50)  # ~20 FPS for smooth 3D rotation
+    
+    curses.start_color()
+    curses.use_default_colors()
+    curses.init_pair(1, curses.COLOR_WHITE, -1)   # Bright white
+    curses.init_pair(2, 8, -1)                    # Grey (dim)
+    curses.init_pair(3, curses.COLOR_BLACK, curses.COLOR_WHITE) # Inverted
+
+    angle_deg = 0.0
+    tilt_rad = math.radians(22.0)
+    
+    # Pre-generate sphere sample points
+    sphere_points = []
+    for lat_deg in range(-80, 85, 8):
+        lat_rad = math.radians(lat_deg)
+        cos_lat = math.cos(lat_rad)
+        sin_lat = math.sin(lat_rad)
+        for lon_deg in range(-180, 180, 10):
+            lon_rad = math.radians(lon_deg)
+            land = is_land(lat_deg, lon_deg)
+            is_grid = (lat_deg % 24 == 0) or (lon_deg % 30 == 0)
+            if land or is_grid:
+                sphere_points.append((lat_rad, lon_rad, cos_lat, sin_lat, land, is_grid))
+
+    rx_packets = 28853
+    tx_packets = 1718
+    wave_offset = 0
+
+    while True:
+        try:
+            h, w = stdscr.getmaxyx()
+            stdscr.erase()
+            if h < 8 or w < 15:
+                stdscr.addstr(0, 0, "[KORTEX-NET]", curses.color_pair(1))
+                stdscr.refresh()
+                time.sleep(0.1)
+                continue
+
+            # Header
+            stdscr.addstr(0, 1, "GLOBAL NETWORK MAP // LIVE TELEMETRY", curses.color_pair(1) | curses.A_BOLD)
+            status_line = "STATE: ONLINE   IPv4: 10.0.2.15   PING: 0.8ms"
+            stdscr.addstr(1, 1, status_line[:w - 2], curses.color_pair(2))
+
+            # 3D Globe section
+            globe_center_y = min(h // 2 - 2, 11)
+            globe_center_x = w // 2
+            radius_y = max(4, min(9, globe_center_y - 2))
+            radius_x = int(radius_y * 2.2)
+
+            curr_rot_rad = math.radians(angle_deg)
+            cos_tilt = math.cos(tilt_rad)
+            sin_tilt = math.sin(tilt_rad)
+
+            # Draw outer ring
+            ring_steps = 40
+            for step in range(ring_steps):
+                th = (2.0 * math.pi * step) / ring_steps
+                ry = int(globe_center_y + radius_y * math.sin(th))
+                rx = int(globe_center_x + radius_x * math.cos(th))
+                if 2 <= ry < h and 1 <= rx < w - 1:
+                    stdscr.addstr(ry, rx, "·", curses.color_pair(2))
+
+            # Draw land & grid points
+            for (lat_rad, base_lon_rad, cos_lat, sin_lat, land, is_grid) in sphere_points:
+                lon_rad = base_lon_rad + curr_rot_rad
+                
+                # 3D Coordinates (Unit sphere)
+                x = cos_lat * math.sin(lon_rad)
+                y = sin_lat
+                z = cos_lat * math.cos(lon_rad)
+
+                # Rotate tilt around X axis
+                y_tilted = y * cos_tilt - z * sin_tilt
+                z_tilted = y * sin_tilt + z * cos_tilt
+
+                # Front-facing only
+                if z_tilted > 0.05:
+                    screen_x = int(globe_center_x + x * radius_x)
+                    screen_y = int(globe_center_y - y_tilted * radius_y)
+
+                    if 2 <= screen_y < h - 9 and 1 <= screen_x < w - 1:
+                        if land:
+                            ch = "●" if z_tilted > 0.5 else "•"
+                            stdscr.addstr(screen_y, screen_x, ch, curses.color_pair(1) | curses.A_BOLD)
+                        elif is_grid:
+                            stdscr.addstr(screen_y, screen_x, "·", curses.color_pair(2))
+
+            # Draw Connection Arcs & Nodes
+            node_screen_coords = []
+            for (n_lat, n_lon, label) in NODES:
+                n_lat_rad = math.radians(n_lat)
+                n_lon_rad = math.radians(n_lon) + curr_rot_rad
+                nx = math.cos(n_lat_rad) * math.sin(n_lon_rad)
+                ny = math.sin(n_lat_rad)
+                nz = math.cos(n_lat_rad) * math.cos(n_lon_rad)
+                ny_t = ny * cos_tilt - nz * sin_tilt
+                nz_t = ny * sin_tilt + nz * cos_tilt
+                if nz_t > 0.0:
+                    ns_x = int(globe_center_x + nx * radius_x)
+                    ns_y = int(globe_center_y - ny_t * radius_y)
+                    node_screen_coords.append((ns_x, ns_y, label))
+                    if 2 <= ns_y < h - 9 and 1 <= ns_x < w - 1:
+                        stdscr.addstr(ns_y, ns_x, "◆", curses.color_pair(1) | curses.A_BOLD)
+
+            # Draw lines between visible nodes
+            if len(node_screen_coords) >= 2:
+                for i in range(len(node_screen_coords) - 1):
+                    x1, y1, _ = node_screen_coords[i]
+                    x2, y2, _ = node_screen_coords[i+1]
+                    mid_x = (x1 + x2) // 2
+                    mid_y = min(y1, y2) - 1
+                    if 2 <= mid_y < h - 9 and 1 <= mid_x < w - 1:
+                        stdscr.addstr(mid_y, mid_x, "·", curses.color_pair(1))
+
+            # Bottom Section: Live Traffic Waveform
+            traffic_y = globe_center_y + radius_y + 2
+            if traffic_y < h - 5:
+                stdscr.addstr(traffic_y, 1, "┌ LIVE TRAFFIC " + "─" * max(0, w - 18) + "┐", curses.color_pair(2))
+                traffic_y += 1
+                stdscr.addstr(traffic_y, 2, "LIVE TRAFFIC", curses.color_pair(1) | curses.A_BOLD)
+                rate_str = "86.7 Mb/s"
+                stdscr.addstr(traffic_y, max(14, w - len(rate_str) - 3), rate_str, curses.color_pair(1))
+                traffic_y += 1
+
+                # Sine waveform simulation
+                wave_w = max(10, w - 4)
+                wave_str = ""
+                for col in range(wave_w):
+                    val = (math.sin((col + wave_offset) * 0.45) * math.cos((col + wave_offset) * 0.15))
+                    if val > 0.6:
+                        ch = "/\\"
+                    elif val > 0.2:
+                        ch = "__"
+                    elif val < -0.4:
+                        ch = "\\/"
+                    else:
+                        ch = "--"
+                    wave_str += ch[0]
+                stdscr.addstr(traffic_y, 2, wave_str[:wave_w], curses.color_pair(1))
+                traffic_y += 2
+
+                # Packet telemetry
+                rx_packets += random.randint(10, 45)
+                tx_packets += random.randint(2, 12)
+                stdscr.addstr(traffic_y, 2, f"Packets (RX):         {rx_packets}", curses.color_pair(2))
+                traffic_y += 1
+                if traffic_y < h - 1:
+                    stdscr.addstr(traffic_y, 2, f"Packets (TX):          {tx_packets}", curses.color_pair(2))
+                    traffic_y += 1
+                if traffic_y < h - 1:
+                    stdscr.addstr(traffic_y, 2, "Packets (ERR):            0", curses.color_pair(2))
+
+            stdscr.refresh()
+            angle_deg = (angle_deg + 2.5) % 360.0
+            wave_offset += 1
+
+            key = stdscr.getch()
+            if key == ord('q'):
+                break
+        except curses.error:
+            pass
+        except Exception:
+            time.sleep(0.1)
+
+def main():
+    curses.wrapper(draw_net_panel)
+
+if __name__ == '__main__':
+    main()

@@ -1,0 +1,169 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# KORTEX-LAYOUT: Desktop Mode & Window Layout Switcher
+# Modes: grid (eDEX Cyber-Deck), tiling (Pro Developer), floating (Classic Desktop)
+# ==============================================================================
+
+set -u
+
+CONF_FILE="${HOME}/.config/kortex/config.json"
+STATE_FILE="/run/kortex/layout"
+mkdir -p "/run/kortex" "$(dirname "$CONF_FILE")" 2>/dev/null || true
+
+# Ensure Hyprland connection
+if [ -z "${XDG_RUNTIME_DIR:-}" ]; then
+    export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+fi
+if [ -z "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
+    sig=$(find "${XDG_RUNTIME_DIR}/hypr" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | head -n 1 | xargs -r basename || true)
+    if [ -n "$sig" ]; then
+        export HYPRLAND_INSTANCE_SIGNATURE="$sig"
+    fi
+fi
+
+get_current_mode() {
+    if [ -f "$STATE_FILE" ]; then
+        cat "$STATE_FILE"
+    elif [ -f "$CONF_FILE" ] && command -v jq >/dev/null 2>&1; then
+        jq -r '.layout // "grid"' "$CONF_FILE" 2>/dev/null || echo "grid"
+    else
+        echo "grid"
+    fi
+}
+
+set_config_mode() {
+    local m="$1"
+    echo "$m" > "$STATE_FILE"
+    if [ -f "$CONF_FILE" ] && command -v jq >/dev/null 2>&1; then
+        local tmp
+        tmp=$(mktemp)
+        jq --arg lay "$m" '.layout = $lay' "$CONF_FILE" > "$tmp" 2>/dev/null && mv "$tmp" "$CONF_FILE"
+    fi
+    local mstate="${HOME}/.config/kortex/master-state.json"
+    if [ -f "$mstate" ] && command -v jq >/dev/null 2>&1; then
+        local philo="cyberdeck"
+        if [ "$m" = "tiling" ]; then philo="tiling"; elif [ "$m" = "floating" ]; then philo="macbook"; fi
+        local tmpm
+        tmpm=$(mktemp)
+        jq --arg p "$philo" '.interface.philosophy = $p' "$mstate" > "$tmpm" 2>/dev/null && mv "$tmpm" "$mstate"
+    fi
+    pkill -SIGUSR2 waybar 2>/dev/null || true
+}
+
+notify_mode() {
+    local title="$1"
+    local desc="$2"
+    if command -v notify-send >/dev/null 2>&1; then
+        notify-send -t 2000 -a "KORTEX-OS" "$title" "$desc" 2>/dev/null || true
+    fi
+}
+
+apply_grid() {
+    set_config_mode "grid"
+    timeout 2 hyprctl keyword general:layout dwindle 2>/dev/null || true
+    
+    # Restore/launch 5-module grid via kortex-grid-init
+    /usr/local/bin/kortex-grid-init >/dev/null 2>&1 &
+    notify_mode "KORTEX LAYOUT" "Mode: Cyber-Deck 5-Grid (eDEX-UI)"
+    echo "grid"
+}
+
+apply_tiling() {
+    set_config_mode "tiling"
+    # Hide bottom on-screen keyboard and decorative auxiliary panels
+    pkill -f "kitty --class kortex-kb" 2>/dev/null || true
+    pkill -f "kitty --class kortex-files" 2>/dev/null || true
+    pkill -f "kitty --class kortex-net" 2>/dev/null || true
+    pkill -f "kitty --class kortex-pulse" 2>/dev/null || true
+    
+    # Switch all windows on current workspace to Hyprland dwindle tiling
+    timeout 2 hyprctl keyword general:layout dwindle 2>/dev/null || true
+    timeout 2 hyprctl dispatch settiled 2>/dev/null || true
+    
+    # If no windows remain, launch clean terminal
+    if ! pgrep -f "kitty" >/dev/null 2>&1; then
+        kitty >/dev/null 2>&1 &
+    fi
+
+    notify_mode "KORTEX LAYOUT" "Mode: Pro Developer (Full-Screen Dwindle Tiling)"
+    echo "tiling"
+}
+
+apply_floating() {
+    set_config_mode "floating"
+    # Hide on-screen keyboard
+    pkill -f "kitty --class kortex-kb" 2>/dev/null || true
+    pkill -f "kitty --class kortex-files" 2>/dev/null || true
+    pkill -f "kitty --class kortex-net" 2>/dev/null || true
+    pkill -f "kitty --class kortex-pulse" 2>/dev/null || true
+    
+    # Translate active / open windows to floating mode
+    timeout 2 hyprctl dispatch setfloating 2>/dev/null || true
+    
+    # If no window is open, launch friendly terminal/browser
+    if ! pgrep -f "kitty" >/dev/null 2>&1; then
+        kitty >/dev/null 2>&1 &
+    fi
+    
+    notify_mode "KORTEX LAYOUT" "Mode: Classic Desktop (Mouse Friendly Floating)"
+    echo "floating"
+}
+
+cycle_next() {
+    local cur
+    cur=$(get_current_mode)
+    case "$cur" in
+        grid)
+            apply_tiling
+            ;;
+        tiling)
+            apply_floating
+            ;;
+        floating|*)
+            apply_grid
+            ;;
+    esac
+}
+
+waybar_status() {
+    local cur
+    cur=$(get_current_mode)
+    case "$cur" in
+        tiling)
+            echo '{"text": "[ ▤ TILE ]", "tooltip": "Layout: Pro Developer Tiling (Super+Tab)", "class": "tiling"}'
+            ;;
+        floating)
+            echo '{"text": "[ ❐ FLOAT ]", "tooltip": "Layout: Classic Floating Mode (Super+Tab)", "class": "floating"}'
+            ;;
+        grid|*)
+            echo '{"text": "[ ⊞ GRID ]", "tooltip": "Layout: eDEX Cyber-Deck Grid (Super+Tab)", "class": "grid"}'
+            ;;
+    esac
+}
+
+cmd="${1:-next}"
+
+case "$cmd" in
+    grid)
+        apply_grid
+        ;;
+    tiling|tile)
+        apply_tiling
+        ;;
+    floating|float)
+        apply_floating
+        ;;
+    next|cycle|toggle)
+        cycle_next
+        ;;
+    status|get)
+        get_current_mode
+        ;;
+    waybar)
+        waybar_status
+        ;;
+    *)
+        echo "Usage: kortex-layout [grid|tiling|floating|next|status|waybar]"
+        exit 1
+        ;;
+esac

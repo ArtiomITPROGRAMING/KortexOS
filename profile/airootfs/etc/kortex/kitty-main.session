@@ -1,0 +1,20 @@
+# KortexOS Main Terminal Session
+# 5 tabs matching Tron eDEX-UI Layout
+
+new_tab MAIN
+cd ~
+launch bash
+
+new_tab EMPTY
+launch cat
+
+new_tab EMPTY
+launch cat
+
+new_tab EMPTY
+launch cat
+
+new_tab EMPTY
+launch cat
+
+focus_tab 0

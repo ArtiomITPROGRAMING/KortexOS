@@ -1,0 +1,42 @@
+{
+  "version": "2.0",
+  "theme": {
+    "name": "cyan",
+    "accent_color": "00f0ff",
+    "inactive_color": "003344",
+    "border_size": 2,
+    "rounding": 4,
+    "gaps_in": 6,
+    "gaps_out": 10,
+    "blur": true,
+    "opacity": 0.95,
+    "animations": "smooth"
+  },
+  "layout": "grid",
+  "grid_widgets": {
+    "sys_panel": true,
+    "terminal": true,
+    "globe_net": true,
+    "file_grid": true,
+    "virtual_keyboard": true
+  },
+  "hotkeys": {
+    "close": "SUPER, Q",
+    "close_alt": "ALT, F4",
+    "menu": "SUPER, D",
+    "terminal": "SUPER, RETURN",
+    "browser": "SUPER, B",
+    "file_manager": "SUPER, E",
+    "screenshot": "SUPER SHIFT, S",
+    "lock": "SUPER, L",
+    "layout": "SUPER, TAB",
+    "help_hud": "SUPER, F1",
+    "settings": "SUPER, S",
+    "ai": "SUPER, A",
+    "net_guard": "SUPER, N",
+    "reload": "SUPER SHIFT, R"
+  },
+  "profile": "balanced",
+  "scale": "1.0",
+  "resolution": "1920x1080@60"
+}

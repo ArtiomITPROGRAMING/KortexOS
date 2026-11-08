@@ -1,0 +1,176 @@
+#!/usr/bin/env python3
+"""
+KortexOS Interactive Cyberpunk Keyboard Subsystem (1:1 Tron eDEX-UI Style)
+Renders high-fidelity ANSI QWERTY keyboard with dynamic keypress lighting.
+"""
+
+import curses
+import os
+import sys
+import time
+import threading
+
+# Scancode mapping to key identifiers
+SCANCODE_MAP = {
+    1: "ESC", 2: "1", 3: "2", 4: "3", 5: "4", 6: "5", 7: "6", 8: "7", 9: "8", 10: "9", 11: "0", 12: "-", 13: "=", 14: "BACK",
+    15: "TAB", 16: "Q", 17: "W", 18: "E", 19: "R", 20: "T", 21: "Y", 22: "U", 23: "I", 24: "O", 25: "P", 26: "[", 27: "]", 43: "\\",
+    58: "CAPS", 30: "A", 31: "S", 32: "D", 33: "F", 34: "G", 35: "H", 36: "J", 37: "K", 38: "L", 39: ";", 40: "'", 28: "RETUR",
+    42: "SHIFT", 44: "Z", 45: "X", 46: "C", 47: "V", 48: "B", 49: "N", 50: "M", 51: ",", 52: ".", 53: "/", 54: "SHIFT",
+    29: "contr", 56: "option", 125: "command", 57: "SPACE", 100: "option", 97: "contr",
+    105: "<", 103: "^", 108: "v", 106: ">"
+}
+
+pressed_labels = set()
+lock = threading.Lock()
+
+def evdev_listener():
+    """Background listener for /dev/input keyboard events"""
+    global pressed_labels
+    try:
+        import evdev
+        from evdev import ecodes
+        import select
+
+        devices = [evdev.InputDevice(path) for path in evdev.list_devices()]
+        kbd_devs = [d for d in devices if ecodes.EV_KEY in d.capabilities()]
+        if not kbd_devs:
+            return
+
+        while True:
+            r, _, _ = select.select(kbd_devs, [], [], 0.5)
+            for dev in r:
+                try:
+                    for ev in dev.read():
+                        if ev.type == ecodes.EV_KEY:
+                            lbl = SCANCODE_MAP.get(ev.code, "")
+                            with lock:
+                                if ev.value in (1, 2) and lbl:
+                                    pressed_labels.add(lbl)
+                                elif ev.value == 0 and lbl:
+                                    pressed_labels.discard(lbl)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+# Row specifications: (label_top, label_bottom, width)
+KEY_ROWS = [
+    [("~", "", 3), ("!", "1", 3), ("@", "2", 3), ("#", "3", 3), ("$", "4", 3), ("%", "5", 3), ("^", "6", 3), ("&", "7", 3), ("*", "8", 3), ("(", "9", 3), (")", "0", 3), ("_", "-", 3), ("+", "=", 3), ("BACK", "", 6)],
+    [("TAB", "", 4), ("Q", "", 3), ("W", "", 3), ("E", "", 3), ("R", "", 3), ("T", "", 3), ("Y", "", 3), ("U", "", 3), ("I", "", 3), ("O", "", 3), ("P", "", 3), ("{", "[", 3), ("}", "]", 3), ("|", "\\", 4)],
+    [("CAPS", "", 5), ("A", "", 3), ("S", "", 3), ("D", "", 3), ("F", "", 3), ("G", "", 3), ("H", "", 3), ("J", "", 3), ("K", "", 3), ("L", "", 3), (":", ";", 3), ("\"", "'", 3), ("RETUR", "", 6)],
+    [("SHIFT", "", 6), ("Z", "", 3), ("X", "", 3), ("C", "", 3), ("V", "", 3), ("B", "", 3), ("N", "", 3), ("M", "", 3), ("<", ",", 3), (">", ".", 3), ("?", "/", 3), ("SHIFT", "", 7)],
+    [("fn", "", 3), ("contr", "", 5), ("option", "", 6), ("command", "", 7), ("SPACE", "", 18), ("command", "", 7), ("option", "", 6), ("<", "", 3), ("^", "", 3), ("v", "", 3), (">", "", 3)],
+]
+
+def safe_addstr(stdscr, y, x, text, attr=0):
+    try:
+        h, w = stdscr.getmaxyx()
+        if 0 <= y < h and 0 <= x < w:
+            max_len = w - x
+            if max_len > 0:
+                stdscr.addstr(y, x, text[:max_len], attr)
+    except Exception:
+        pass
+
+def draw_keyboard(stdscr):
+    curses.curs_set(0)
+    stdscr.nodelay(True)
+    stdscr.timeout(40)
+
+    curses.start_color()
+    curses.use_default_colors()
+    curses.init_pair(1, curses.COLOR_WHITE, -1)   # Standard text
+    curses.init_pair(2, curses.COLOR_BLACK, -1)   # Dark / dim
+    curses.init_pair(3, curses.COLOR_BLACK, curses.COLOR_WHITE) # Inverted active / illuminated
+
+    # Start hardware event listener in background
+    t = threading.Thread(target=evdev_listener, daemon=True)
+    t.start()
+
+    transient = {}
+    
+    # Ambient keypresses for idle demonstration (Tron aesthetic)
+    demo_keys = ["S", "I", "SPACE", "A", "RETUR", "E"]
+    demo_idx = 0
+    next_demo = time.time() + 2.0
+
+    while True:
+        try:
+            h, w = stdscr.getmaxyx()
+            stdscr.erase()
+
+            # Non-blocking curses key reader
+            ch = stdscr.getch()
+            if ch != -1:
+                ch_s = chr(ch).upper() if 32 <= ch <= 126 else ""
+                if ch_s:
+                    transient[ch_s] = time.time() + 0.3
+                elif ch in (10, 13):
+                    transient["RETUR"] = time.time() + 0.3
+                elif ch in (curses.KEY_BACKSPACE, 127, 8):
+                    transient["BACK"] = time.time() + 0.3
+                elif ch == 32:
+                    transient["SPACE"] = time.time() + 0.3
+
+            now = time.time()
+            if now > next_demo:
+                transient[demo_keys[demo_idx % len(demo_keys)]] = now + 0.4
+                demo_idx += 1
+                next_demo = now + 3.0
+
+            active = set(pressed_labels)
+            for k, exp in list(transient.items()):
+                if now < exp:
+                    active.add(k)
+                else:
+                    del transient[k]
+
+            # Layout math
+            # Each key row takes 2 text lines (top label + bottom label / border)
+            total_h = len(KEY_ROWS) * 2 + 1
+            start_y = max(1, (h - total_h) // 2)
+
+            for r_idx, row in enumerate(KEY_ROWS):
+                row_y = start_y + r_idx * 2
+                if row_y + 1 >= h:
+                    break
+
+                # Row total width
+                row_w = sum(k_w + 1 for _, _, k_w in row) + 1
+                curr_x = max(1, (w - row_w) // 2)
+
+                for top_lbl, bot_lbl, k_w in row:
+                    # Key name check
+                    key_id = bot_lbl if bot_lbl and bot_lbl not in ("1","2","3","4","5","6","7","8","9","0","-","=","[","]","\\",";","'",",",".","/") else top_lbl
+                    is_active = (top_lbl in active) or (bot_lbl in active) or (key_id in active)
+
+                    txt_attr = curses.color_pair(3) | curses.A_BOLD if is_active else curses.color_pair(1)
+                    box_attr = curses.color_pair(3) if is_active else curses.color_pair(1)
+
+                    # Draw key box
+                    # Top line
+                    safe_addstr(stdscr, row_y, curr_x, "[" + ("=" * (k_w - 2) if is_active else "-" * (k_w - 2)) + "]", box_attr)
+                    
+                    # Content line
+                    disp_str = top_lbl if not bot_lbl else f"{top_lbl} {bot_lbl}"
+                    disp_str = disp_str[:k_w - 2]
+                    pad_l = (k_w - 2 - len(disp_str)) // 2
+                    pad_r = (k_w - 2 - len(disp_str)) - pad_l
+                    body = " " * pad_l + disp_str + " " * pad_r
+
+                    safe_addstr(stdscr, row_y + 1, curr_x, "|", box_attr)
+                    safe_addstr(stdscr, row_y + 1, curr_x + 1, body, txt_attr)
+                    safe_addstr(stdscr, row_y + 1, curr_x + k_w - 1, "|", box_attr)
+
+                    curr_x += k_w + 1
+
+            stdscr.refresh()
+            time.sleep(0.04)
+        except Exception:
+            time.sleep(0.05)
+
+def main():
+    curses.wrapper(draw_keyboard)
+
+if __name__ == "__main__":
+    main()

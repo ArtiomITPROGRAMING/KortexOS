@@ -1,0 +1,348 @@
+#!/usr/bin/env python3
+"""
+Kortex Link Daemon (kortex-link-daemon)
+Lightweight HTTP & REST server (port 8090) providing a responsive mobile eDEX-UI
+second screen dashboard and remote command interface.
+"""
+
+import os
+import sys
+import json
+import time
+import subprocess
+from http.server import HTTPServer, BaseHTTPRequestHandler
+import socket
+
+PORT = 8090
+TELEMETRY_PATH = "/run/kortex/telemetry.json"
+
+MOBILE_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>KORTEX-OS // MOBILE DECK</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body {
+    background-color: #000000;
+    color: #ffffff;
+    font-family: 'Courier New', Courier, monospace;
+    padding: 14px;
+    user-select: none;
+  }
+  .header {
+    border: 2px solid #ffffff;
+    padding: 10px;
+    text-align: center;
+    margin-bottom: 12px;
+    font-weight: bold;
+    letter-spacing: 2px;
+  }
+  .card {
+    border: 1px solid #444444;
+    padding: 10px;
+    margin-bottom: 12px;
+    background: #050505;
+  }
+  .card-title {
+    font-size: 11px;
+    color: #888888;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+    letter-spacing: 1px;
+  }
+  .stat-val {
+    font-size: 20px;
+    font-weight: bold;
+    margin-bottom: 4px;
+  }
+  .progress-bg {
+    width: 100%;
+    height: 10px;
+    background: #111111;
+    border: 1px solid #333333;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: #ffffff;
+    width: 0%;
+    transition: width 0.3s ease;
+  }
+  .btn-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .btn {
+    background: #000000;
+    border: 1px solid #ffffff;
+    color: #ffffff;
+    padding: 14px 8px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: bold;
+    text-transform: uppercase;
+    cursor: pointer;
+    text-align: center;
+  }
+  .btn:active {
+    background: #ffffff;
+    color: #000000;
+  }
+  .btn-danger {
+    border-color: #ff0044;
+    color: #ff0044;
+  }
+  .btn-danger:active {
+    background: #ff0044;
+    color: #ffffff;
+  }
+  .clipboard-area {
+    width: 100%;
+    height: 60px;
+    background: #0a0a0a;
+    border: 1px solid #444444;
+    color: #ffffff;
+    font-family: inherit;
+    font-size: 12px;
+    padding: 6px;
+    resize: none;
+    margin-bottom: 6px;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  [ KORTEX // CYBER-DECK ]
+</div>
+
+<div class="card">
+  <div class="card-title">CPU Utilization & Temp</div>
+  <div class="stat-val" id="cpu-stat">-- %</div>
+  <div class="progress-bg"><div class="progress-fill" id="cpu-bar"></div></div>
+</div>
+
+<div class="card">
+  <div class="card-title">Memory Allocation</div>
+  <div class="stat-val" id="ram-stat">-- / -- GiB</div>
+  <div class="progress-bg"><div class="progress-fill" id="ram-bar"></div></div>
+</div>
+
+<div class="card">
+  <div class="card-title">Telemetry Status</div>
+  <div style="font-size: 12px; color: #aaaaaa;" id="status-info">Syncing...</div>
+</div>
+
+<div class="card-title" style="margin-left: 2px;">Remote Controls</div>
+<div class="btn-grid">
+  <button class="btn" onclick="sendAction('lock')">🔒 Lock Station</button>
+  <button class="btn" onclick="sendAction('cycle_theme')">🎨 Cycle Theme</button>
+  <button class="btn" onclick="sendAction('profile_overdrive')">⚡ Overdrive</button>
+  <button class="btn" onclick="sendAction('profile_eco')">🌱 Eco Mode</button>
+  <button class="btn" onclick="sendAction('vol_up')">🔊 Vol Up</button>
+  <button class="btn" onclick="sendAction('vol_down')">🔉 Vol Down</button>
+</div>
+
+<button class="btn btn-danger" style="width: 100%; margin-bottom: 12px;" onclick="sendAction('panic')">
+  🚨 Panic Network Lockdown
+</button>
+
+<div class="card">
+  <div class="card-title">Remote Clipboard Sync</div>
+  <textarea id="clip-text" class="clipboard-area" placeholder="Type text to push to laptop clipboard..."></textarea>
+  <div style="display: flex; gap: 8px;">
+    <button class="btn" style="flex: 1; padding: 8px;" onclick="pushClip()">Push to OS</button>
+    <button class="btn" style="flex: 1; padding: 8px;" onclick="fetchClip()">Pull from OS</button>
+  </div>
+</div>
+
+<script>
+function updateTelemetry() {
+  fetch('/api/telemetry')
+    .then(r => r.json())
+    .then(data => {
+      document.getElementById('cpu-stat').innerText = data.cpu_percent + '% (' + data.temp + '°C)';
+      document.getElementById('cpu-bar').style.width = data.cpu_percent + '%';
+
+      document.getElementById('ram-stat').innerText = data.ram_used + ' / ' + data.ram_total + ' GiB (' + data.ram_percent + '%)';
+      document.getElementById('ram-bar').style.width = data.ram_percent + '%';
+
+      document.getElementById('status-info').innerText = 'Power Profile: [' + data.profile + '] | Battery: ' + data.battery + ' | Host: ' + data.hostname;
+    })
+    .catch(e => {
+      document.getElementById('status-info').innerText = 'Connection paused';
+    });
+}
+
+function sendAction(action) {
+  fetch('/api/action', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: action })
+  });
+}
+
+function pushClip() {
+  const text = document.getElementById('clip-text').value;
+  fetch('/api/clipboard', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text: text })
+  });
+}
+
+function fetchClip() {
+  fetch('/api/clipboard')
+    .then(r => r.json())
+    .then(d => {
+      if (d.text) document.getElementById('clip-text').value = d.text;
+    });
+}
+
+setInterval(updateTelemetry, 1000);
+updateTelemetry();
+</script>
+</body>
+</html>
+"""
+
+def get_telemetry():
+    data = {
+        "cpu_percent": 0,
+        "temp": 42.0,
+        "ram_used": "1.3",
+        "ram_total": "3.8",
+        "ram_percent": 30,
+        "battery": "98%",
+        "profile": "BALANCED",
+        "hostname": socket.gethostname()
+    }
+    
+    # Try reading KIS telemetry
+    if os.path.exists(TELEMETRY_PATH):
+        try:
+            with open(TELEMETRY_PATH, "r") as f:
+                kis = json.load(f)
+                data["cpu_percent"] = int(kis.get("cpu_total", 0))
+                data["temp"] = kis.get("cpu_temp", 42.0)
+                data["profile"] = kis.get("power_profile", "BALANCED")
+        except Exception:
+            pass
+
+    # Read memory
+    try:
+        with open("/proc/meminfo", "r") as f:
+            lines = f.readlines()
+        mem = {}
+        for line in lines:
+            parts = line.split(":")
+            if len(parts) == 2:
+                mem[parts[0].strip()] = int(parts[1].split()[0])
+        total_k = mem.get("MemTotal", 1)
+        avail_k = mem.get("MemAvailable", total_k)
+        used_k = total_k - avail_k
+        data["ram_used"] = f"{used_k / (1024 * 1024):.1f}"
+        data["ram_total"] = f"{total_k / (1024 * 1024):.1f}"
+        data["ram_percent"] = int((used_k / total_k) * 100)
+    except Exception:
+        pass
+
+    return data
+
+class LinkHandler(BaseHTTPRequestHandler):
+    def log_message(self, format, *args):
+        pass # Silence normal logs
+
+    def do_GET(self):
+        if self.path in ("/", "/index.html"):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(MOBILE_HTML.encode("utf-8"))
+        elif self.path == "/api/telemetry":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(get_telemetry()).encode("utf-8"))
+        elif self.path == "/api/clipboard":
+            text = ""
+            try:
+                res = subprocess.run(["wl-paste", "--no-newline"], capture_output=True, text=True, timeout=1)
+                text = res.stdout
+            except Exception:
+                pass
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"text": text}).encode("utf-8"))
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def do_POST(self):
+        content_len = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(content_len).decode("utf-8") if content_len > 0 else "{}"
+        try:
+            req = json.loads(body)
+        except Exception:
+            req = {}
+
+        if self.path == "/api/action":
+            action = req.get("action")
+            if action == "lock":
+                subprocess.Popen(["/usr/local/bin/kortex-lock"])
+            elif action == "cycle_theme":
+                themes = ["mono", "amber", "matrix", "cyan"]
+                cur = "mono"
+                try:
+                    res = subprocess.run(["kortex-ctl", "status"], capture_output=True, text=True)
+                    for line in res.stdout.splitlines():
+                        if "Active Theme:" in line:
+                            cur = line.split(":", 1)[1].strip().lower()
+                            break
+                except Exception:
+                    pass
+                idx = (themes.index(cur) + 1) % len(themes) if cur in themes else 0
+                subprocess.Popen(["kortex-ctl", "theme", themes[idx]])
+            elif action == "profile_overdrive":
+                subprocess.Popen(["kortex-ctl", "profile", "overdrive"])
+            elif action == "profile_eco":
+                subprocess.Popen(["kortex-ctl", "profile", "stealth"])
+            elif action == "vol_up":
+                subprocess.Popen(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%+"])
+            elif action == "vol_down":
+                subprocess.Popen(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%-"])
+            elif action == "panic":
+                subprocess.Popen(["sudo", "/usr/local/bin/kortex-net-guard", "--panic"])
+
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"status": "ok"}')
+
+        elif self.path == "/api/clipboard":
+            text = req.get("text", "")
+            if text:
+                try:
+                    subprocess.run(["wl-copy"], input=text.encode("utf-8"), timeout=1)
+                except Exception:
+                    pass
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"status": "ok"}')
+
+def main():
+    server = HTTPServer(("0.0.0.0", PORT), LinkHandler)
+    print(f"[*] Kortex Link Daemon active on port {PORT}")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        server.server_close()
+
+if __name__ == "__main__":
+    main()

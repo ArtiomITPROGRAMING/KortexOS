@@ -1,0 +1,41 @@
+[Plymouth Theme]
+Name=Kortex Tron Cyberpunk
+Description=High-tech neon cyberpunk boot splash for KortexOS Intelligence System
+ModuleName=two-step
+
+[two-step]
+Font=JetBrains Mono Nerd Font 12
+TitleFont=JetBrains Mono Nerd Font 24
+MonospaceFont=JetBrains Mono Nerd Font 12
+ImageDir=/usr/share/plymouth/themes/kortex-tron
+DialogHorizontalAlignment=.5
+DialogVerticalAlignment=.382
+TitleHorizontalAlignment=.5
+TitleVerticalAlignment=.382
+HorizontalAlignment=.5
+VerticalAlignment=.60
+WatermarkHorizontalAlignment=.5
+WatermarkVerticalAlignment=.40
+Transition=none
+TransitionDuration=0.0
+BackgroundStartColor=0x000000
+BackgroundEndColor=0x000000
+ProgressBarBackgroundColor=0x222222
+ProgressBarForegroundColor=0xffffff
+MessageBelowAnimation=true
+
+[boot-up]
+UseEndAnimation=false
+
+[shutdown]
+UseEndAnimation=false
+
+[reboot]
+UseEndAnimation=false
+
+[updates]
+SuppressMessages=true
+ProgressBarShowPercentComplete=true
+UseProgressBar=true
+Title=KORTEX-OS SYSTEM UPDATE
+SubTitle=SYNCHRONIZING SYSTEM PACKAGES...

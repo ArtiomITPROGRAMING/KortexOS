@@ -1,0 +1,332 @@
+#!/usr/bin/env python3
+"""
+KORTEX-PROFILE: Unified Configuration, Profile & Plugin Engine for KortexOS
+Commands:
+  export [file.kortex]  : Save all customization, themes, hotkeys & plugins into a portable file
+  import <file.kortex>  : Import, validate, and immediately apply a .kortex profile package
+  reset                 : Reset all customization back to factory defaults
+  status                : Display active profile summary and installed plugins
+"""
+
+import os
+import sys
+import json
+import shutil
+import tarfile
+import tempfile
+import subprocess
+import argparse
+
+CONF_DIR = os.path.expanduser("~/.config/kortex")
+CONFIG_JSON = os.path.join(CONF_DIR, "config.json")
+PLUGINS_DIR = os.path.join(CONF_DIR, "plugins")
+HYPR_DIR = os.path.expanduser("~/.config/hypr")
+WAYBAR_DIR = os.path.expanduser("~/.config/waybar")
+SKEL_DIR = "/etc/skel/.config"
+
+DEFAULT_CONFIG = {
+    "version": "2.0",
+    "theme": {
+        "name": "cyan",
+        "accent_color": "00f0ff",
+        "inactive_color": "003344",
+        "border_size": 2,
+        "rounding": 4,
+        "gaps_in": 6,
+        "gaps_out": 10,
+        "blur": True,
+        "opacity": 0.95,
+        "animations": "smooth"
+    },
+    "layout": "grid",
+    "grid_widgets": {
+        "sys_panel": True,
+        "terminal": True,
+        "globe_net": True,
+        "file_grid": True,
+        "virtual_keyboard": True
+    },
+    "hotkeys": {
+        "close": "SUPER, Q",
+        "close_alt": "ALT, F4",
+        "menu": "SUPER, D",
+        "terminal": "SUPER, RETURN",
+        "browser": "SUPER, B",
+        "file_manager": "SUPER, E",
+        "screenshot": "SUPER SHIFT, S",
+        "screenshot_full": ", PRINT",
+        "lock": "SUPER, L",
+        "layout": "SUPER, TAB",
+        "help_hud": "SUPER, F1",
+        "settings": "SUPER, S",
+        "ai": "SUPER, A",
+        "net_guard": "SUPER, N",
+        "vault": "SUPER, V",
+        "reload": "SUPER SHIFT, R",
+        "grid_reset": "SUPER SHIFT, G"
+    },
+    "plugins_enabled": True
+}
+
+def ensure_dirs():
+    os.makedirs(CONF_DIR, exist_ok=True)
+    os.makedirs(PLUGINS_DIR, exist_ok=True)
+    os.makedirs(HYPR_DIR, exist_ok=True)
+    os.makedirs(WAYBAR_DIR, exist_ok=True)
+
+def run_cmd(cmd):
+    try:
+        res = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=5)
+        return res.stdout.strip(), res.stderr.strip(), res.returncode
+    except Exception as e:
+        return "", str(e), 1
+
+def load_config():
+    ensure_dirs()
+    if os.path.exists(CONFIG_JSON):
+        try:
+            with open(CONFIG_JSON, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                cfg = DEFAULT_CONFIG.copy()
+                cfg.update(data)
+                return cfg
+        except Exception:
+            pass
+    return DEFAULT_CONFIG.copy()
+
+def save_config(cfg):
+    ensure_dirs()
+    with open(CONFIG_JSON, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, indent=2, ensure_ascii=False)
+
+def apply_system_state(cfg):
+    """Live applies the configuration to Hyprland, Waybar, and Desktop."""
+    th = cfg.get("theme", {})
+    accent = th.get("accent_color", "00f0ff")
+    inactive = th.get("inactive_color", "003344")
+    border = th.get("border_size", 2)
+    rounding = th.get("rounding", 4)
+    gaps_in = th.get("gaps_in", 6)
+    gaps_out = th.get("gaps_out", 10)
+    blur = th.get("blur", True)
+    opacity = th.get("opacity", 0.95)
+    anim = th.get("animations", "smooth")
+
+    # 1. Update theme.conf
+    theme_conf = os.path.join(HYPR_DIR, "theme.conf")
+    with open(theme_conf, "w", encoding="utf-8") as f:
+        f.write(f"""# KortexOS Live Theme Configuration
+# Controlled by Kortex Customization Engine
+
+$col_active = rgb({accent})
+$col_inactive = rgb({inactive})
+$col_shadow = rgba({accent}33)
+$border_size = {border}
+$rounding = {rounding}
+$gaps_in = {gaps_in}
+$gaps_out = {gaps_out}
+$active_opacity = {opacity}
+""")
+
+    # 2. Live apply via hyprctl
+    run_cmd(f"hyprctl keyword general:col.active_border 'rgb({accent})'")
+    run_cmd(f"hyprctl keyword general:col.inactive_border 'rgb({inactive})'")
+    run_cmd(f"hyprctl keyword general:border_size {border}")
+    run_cmd(f"hyprctl keyword decoration:rounding {rounding}")
+    run_cmd(f"hyprctl keyword general:gaps_in {gaps_in}")
+    run_cmd(f"hyprctl keyword general:gaps_out {gaps_out}")
+    run_cmd(f"hyprctl keyword decoration:blur:enabled {'true' if blur else 'false'}")
+    run_cmd(f"hyprctl keyword decoration:active_opacity {opacity}")
+
+    if anim == "disabled":
+        run_cmd("hyprctl keyword animations:enabled false")
+    elif anim == "fast":
+        run_cmd("hyprctl keyword animations:enabled true")
+        run_cmd("hyprctl keyword animations:animation 'windows, 1, 2, default'")
+    else:  # smooth
+        run_cmd("hyprctl keyword animations:enabled true")
+        run_cmd("hyprctl keyword animations:animation 'windows, 1, 4, default'")
+
+    # 3. Update Waybar style
+    waybar_css = os.path.join(WAYBAR_DIR, "style.css")
+    if os.path.exists(waybar_css):
+        try:
+            with open(waybar_css, "r", encoding="utf-8") as f:
+                css_content = f.read()
+            # Replace accent references or reload
+            run_cmd("pkill -SIGUSR2 waybar")
+        except Exception:
+            pass
+
+    # 4. Apply layout
+    layout = cfg.get("layout", "grid")
+    run_cmd(f"/usr/local/bin/kortex-layout {layout}")
+    
+    # 5. Reload Hyprland
+    run_cmd("hyprctl reload")
+
+def cmd_export(output_path=None):
+    cfg = load_config()
+    if not output_path:
+        import datetime
+        now_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_path = f"kortex-profile-{now_str}.kortex"
+
+    output_path = os.path.abspath(output_path)
+    print(f"[*] Packaging KortexOS profile to: {output_path}")
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        # Save config.json and master-state.json
+        with open(os.path.join(tmp_dir, "config.json"), "w", encoding="utf-8") as f:
+            json.dump(cfg, f, indent=2, ensure_ascii=False)
+        master_src = os.path.join(CONF_DIR, "master-state.json")
+        if os.path.exists(master_src):
+            shutil.copy2(master_src, os.path.join(tmp_dir, "master-state.json"))
+
+        # Copy theme.conf and binds.conf if exist
+        for conf_name in ["theme.conf", "binds.conf"]:
+            src = os.path.join(HYPR_DIR, conf_name)
+            if os.path.exists(src):
+                shutil.copy2(src, os.path.join(tmp_dir, conf_name))
+
+        # Copy waybar style if exists
+        w_style = os.path.join(WAYBAR_DIR, "style.css")
+        if os.path.exists(w_style):
+            shutil.copy2(w_style, os.path.join(tmp_dir, "waybar_style.css"))
+
+        # Copy plugins
+        if os.path.exists(PLUGINS_DIR) and os.listdir(PLUGINS_DIR):
+            plugins_target = os.path.join(tmp_dir, "plugins")
+            shutil.copytree(PLUGINS_DIR, plugins_target, dirs_exist_ok=True)
+
+        # Create tar.gz archive
+        with tarfile.open(output_path, "w:gz") as tar:
+            for item in os.listdir(tmp_dir):
+                tar.add(os.path.join(tmp_dir, item), arcname=item)
+
+    print(f"[+] Successfully exported profile: {output_path} ({os.path.getsize(output_path)} bytes)")
+
+def cmd_import(input_path):
+    if not os.path.exists(input_path):
+        print(f"[-] Profile file not found: {input_path}")
+        sys.exit(1)
+
+    print(f"[*] Importing profile from: {input_path}")
+    ensure_dirs()
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        try:
+            with tarfile.open(input_path, "r:gz") as tar:
+                tar.extractall(path=tmp_dir)
+        except Exception as e:
+            print(f"[-] Corrupt or invalid .kortex profile: {e}")
+            sys.exit(1)
+
+        # Validate config.json
+        cfg_file = os.path.join(tmp_dir, "config.json")
+        if not os.path.exists(cfg_file):
+            print("[-] Invalid profile: missing config.json inside archive")
+            sys.exit(1)
+
+        with open(cfg_file, "r", encoding="utf-8") as f:
+            new_cfg = json.load(f)
+
+        save_config(new_cfg)
+
+        # Restore master-state.json if present
+        m_src = os.path.join(tmp_dir, "master-state.json")
+        if os.path.exists(m_src):
+            shutil.copy2(m_src, os.path.join(CONF_DIR, "master-state.json"))
+
+        # Restore hypr configs
+        for cname in ["theme.conf", "binds.conf"]:
+            src = os.path.join(tmp_dir, cname)
+            if os.path.exists(src):
+                shutil.copy2(src, os.path.join(HYPR_DIR, cname))
+
+        # Restore waybar style
+        w_src = os.path.join(tmp_dir, "waybar_style.css")
+        if os.path.exists(w_src):
+            shutil.copy2(w_src, os.path.join(WAYBAR_DIR, "style.css"))
+
+        # Restore plugins
+        p_src = os.path.join(tmp_dir, "plugins")
+        if os.path.exists(p_src):
+            shutil.copytree(p_src, PLUGINS_DIR, dirs_exist_ok=True)
+
+    # Live apply
+    apply_system_state(new_cfg)
+    if os.path.exists("/usr/local/bin/kortex-theme-apply"):
+        subprocess.run(["/usr/local/bin/kortex-theme-apply"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    print(f"[+] Profile imported and applied successfully!")
+
+def cmd_reset():
+    print("[*] Resetting KortexOS to factory defaults...")
+    ensure_dirs()
+
+    # Reset config.json
+    save_config(DEFAULT_CONFIG)
+
+    # Restore from skel if available
+    skel_hypr = os.path.join(SKEL_DIR, "hypr")
+    if os.path.exists(skel_hypr):
+        for f in os.listdir(skel_hypr):
+            if f.endswith(".conf"):
+                shutil.copy2(os.path.join(skel_hypr, f), os.path.join(HYPR_DIR, f))
+
+    skel_waybar = os.path.join(SKEL_DIR, "waybar")
+    if os.path.exists(skel_waybar):
+        for f in os.listdir(skel_waybar):
+            shutil.copy2(os.path.join(skel_waybar, f), os.path.join(WAYBAR_DIR, f))
+
+    apply_system_state(DEFAULT_CONFIG)
+    print("[+] KortexOS customization restored to factory defaults!")
+
+def cmd_status():
+    cfg = load_config()
+    th = cfg.get("theme", {})
+    plugins = [p for p in os.listdir(PLUGINS_DIR) if os.path.isfile(os.path.join(PLUGINS_DIR, p))] if os.path.exists(PLUGINS_DIR) else []
+    
+    print("┌────────────────────────────────────────────────────────┐")
+    print("│         KORTEX-OS CUSTOMIZATION PROFILE SUMMARY        │")
+    print("└────────────────────────────────────────────────────────┘")
+    print(f"  Configuration File : {CONFIG_JSON}")
+    print(f"  Layout Mode        : [{cfg.get('layout', 'grid').upper()}]")
+    print(f"  Color Theme        : [{th.get('name', 'cyan').upper()}] (Hex: #{th.get('accent_color', '00f0ff')})")
+    print(f"  Borders / Rounding : {th.get('border_size', 2)}px / {th.get('rounding', 4)}px")
+    print(f"  Gaps (In / Out)    : {th.get('gaps_in', 6)}px / {th.get('gaps_out', 10)}px")
+    print(f"  Blur / Opacity     : {'Enabled' if th.get('blur', True) else 'Disabled'} / {int(th.get('opacity', 0.95)*100)}%")
+    print(f"  Animations         : [{th.get('animations', 'smooth').upper()}]")
+    print(f"  Installed Plugins  : {len(plugins)} found in ~/.config/kortex/plugins/")
+    for p in plugins:
+        print(f"    - {p}")
+    print("")
+
+def main():
+    parser = argparse.ArgumentParser(description="KortexOS Profile Manager & Customization Engine")
+    sub = parser.add_subparsers(dest="command")
+
+    exp_p = sub.add_parser("export", help="Export customization to a .kortex file")
+    exp_p.add_argument("file", nargs="?", help="Output .kortex file path")
+
+    imp_p = sub.add_parser("import", help="Import customization from a .kortex file")
+    imp_p.add_argument("file", help="Input .kortex file path")
+
+    sub.add_parser("reset", help="Reset all settings to factory default")
+    sub.add_parser("status", help="Show active customization profile status")
+
+    args = parser.parse_args()
+
+    if args.command == "export":
+        cmd_export(args.file)
+    elif args.command == "import":
+        cmd_import(args.file)
+    elif args.command == "reset":
+        cmd_reset()
+    elif args.command == "status":
+        cmd_status()
+    else:
+        cmd_status()
+
+if __name__ == "__main__":
+    main()

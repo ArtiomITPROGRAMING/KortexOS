@@ -1,0 +1,141 @@
+@define-color accent #00f0ff;
+
+* {
+    border: none;
+    border-radius: 0;
+    font-family: "JetBrainsMono Nerd Font", monospace;
+    font-size: 11px;
+    font-weight: bold;
+    min-height: 0;
+}
+
+window#waybar {
+    background: #000000;
+    color: #ffffff;
+    border-bottom: 1px solid #333333;
+}
+
+#custom-menu {
+    background: @accent;
+    color: #000000;
+    padding: 0 8px;
+    margin-right: 4px;
+}
+
+#custom-layout {
+    background: #111a24;
+    color: @accent;
+    border: 1px solid @accent;
+    padding: 0 6px;
+    margin-right: 4px;
+}
+
+#custom-layout:hover {
+    background: @accent;
+    color: #000000;
+}
+
+#custom-win-min,
+#custom-win-max {
+    background: #1a1a1a;
+    color: #cccccc;
+    padding: 0 4px;
+    margin-right: 2px;
+}
+
+#custom-win-min:hover,
+#custom-win-max:hover {
+    background: #333333;
+    color: #ffffff;
+}
+
+#custom-win-close {
+    background: #33000a;
+    color: #ff3355;
+    border: 1px solid #ff003c;
+    padding: 0 6px;
+    margin-right: 6px;
+}
+
+#custom-win-close:hover {
+    background: #ff003c;
+    color: #ffffff;
+}
+
+#custom-store,
+#custom-ai,
+#custom-settings,
+#custom-guard {
+    padding: 0 5px;
+    color: #ffffff;
+    background: transparent;
+}
+
+#custom-store:hover,
+#custom-ai:hover,
+#custom-settings:hover,
+#custom-guard:hover {
+    background: #222222;
+    color: @accent;
+}
+
+#custom-plugins {
+    padding: 0 8px;
+    color: @accent;
+    background: #0d1a24;
+    border-radius: 2px;
+    margin-right: 8px;
+}
+
+#taskbar {
+    margin-left: 6px;
+}
+
+#taskbar button {
+    padding: 0 6px;
+    color: #aaaaaa;
+    background: #111111;
+    border: 1px solid #333333;
+    margin: 2px 2px;
+}
+
+#taskbar button.active {
+    color: #000000;
+    background: @accent;
+    border: 1px solid @accent;
+}
+
+#taskbar button:hover {
+    background: #222222;
+    color: #ffffff;
+}
+
+#custom-logo,
+#network,
+#cpu,
+#memory,
+#disk,
+#battery,
+#clock {
+    padding: 0 8px;
+    background: transparent;
+    color: #ffffff;
+}
+
+#custom-logo {
+    letter-spacing: 2px;
+    color: @accent;
+}
+
+#network,
+#cpu,
+#memory,
+#disk,
+#battery {
+    color: #888888;
+}
+
+#clock {
+    color: #ffffff;
+    background: #111111;
+}

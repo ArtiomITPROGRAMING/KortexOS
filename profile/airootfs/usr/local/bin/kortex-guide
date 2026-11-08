@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Kortex Guide CLI shortcut
+exec kitty --class kortex-tour --title "KORTEX OS :: SYSTEM GUIDE" -e /usr/local/bin/kortex-tour "$@"

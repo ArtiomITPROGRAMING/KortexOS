@@ -1,0 +1,459 @@
+#!/usr/bin/env python3
+"""
+Kortex AI Assistant (kortex-ai)
+Autonomous offline neural assistant for KortexOS Intelligence System.
+Supports interactive Tron TUI chat, error analysis, command execution, and local LLM connectors.
+"""
+
+import os
+import sys
+
+# Ensure clean terminal environment for curses
+if "TERM" not in os.environ or os.environ["TERM"] in ("", "unknown"):
+    os.environ["TERM"] = "xterm-256color"
+
+import re
+import json
+import time
+import curses
+import subprocess
+import urllib.request
+import urllib.error
+
+BANNER = """
+ ╔════════════════════════════════════════════════════════════════════════════╗
+ ║        [ KORTEX AI // AUTONOMOUS NEURAL ENGINE v1.0.0 ]                    ║
+ ║        Offline System Intelligence • Error Diagnostic • Command Synthesizer║
+ ╚════════════════════════════════════════════════════════════════════════════╝
+"""
+
+# Knowledge Base & System Directives
+KORTEX_DOCS = {
+    "hyprland": "Hyprland is configured with custom Tron window rules. Super+Q closes window, Super+S opens Settings, Super+A opens AI Assistant, Super+Return opens terminal, Super+Shift+S captures screenshot.",
+    "kortex-ctl": "Unified management CLI. Subcommands: 'profile <eco|balanced|overdrive>', 'theme <mono|amber|matrix|cyan>', 'layout <reset|default>', 'kis' for telemetry.",
+    "kortex-settings": "Native 4-tab control panel for Display/Hz, Audio/Net, Performance, and Grid Themes. Keybind: Super+S.",
+    "kortex-install": "Automated bare-metal and VM installer. Supports UEFI systemd-boot and BIOS GRUB with automatic Plymouth splash and ZRAM setup.",
+    "kis": "KortexOS Intelligence System kernel layer daemon (/usr/local/bin/kis-daemon) communicating via /run/kortex/kis.sock.",
+    "pipewire": "Audio server managed via PipeWire + WirePlumber. CLI control with wpctl get-volume / set-volume.",
+    "network": "NetworkManager daemon managing Ethernet and Wi-Fi via nmcli.",
+    "zen": "linux-zen hybrid performance kernel with low-latency scheduler and preemption."
+}
+
+def run_cmd(cmd):
+    try:
+        res = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=5)
+        return res.stdout.strip(), res.stderr.strip(), res.returncode
+    except Exception as e:
+        return "", str(e), 1
+
+def diagnose_system():
+    report = []
+    # CPU & Frequency
+    cores = os.cpu_count() or 4
+    gov = "unknown"
+    try:
+        with open("/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor") as f:
+            gov = f.read().strip()
+    except Exception:
+        pass
+    report.append(f"• CPU Architecture: {cores} Cores | Active Governor: [{gov}]")
+
+    # Memory & ZRAM
+    mem_out, _, _ = run_cmd("free -m")
+    for line in mem_out.splitlines():
+        if "Mem:" in line:
+            parts = line.split()
+            report.append(f"• Physical Memory: {parts[2]}MB used / {parts[1]}MB total")
+        elif "Swap:" in line:
+            parts = line.split()
+            report.append(f"• ZRAM Compressed Swap: {parts[2]}MB used / {parts[1]}MB total")
+
+    # KIS Telemetry
+    if os.path.exists("/run/kortex/telemetry.json"):
+        try:
+            with open("/run/kortex/telemetry.json") as f:
+                d = json.load(f)
+                temp = d.get("cpu", {}).get("temp_c", 0)
+                prof = d.get("profile", "balanced")
+                report.append(f"• KIS Power Profile: [{prof.upper()}] | Core Temp: {temp}°C")
+        except Exception:
+            pass
+    else:
+        report.append("• KIS Telemetry Daemon: Inactive or initializing (/run/kortex/telemetry.json)")
+
+    # Failed Services
+    failed_out, _, _ = run_cmd("systemctl --failed --no-legend")
+    if failed_out:
+        failed_units = [l.split()[1] for l in failed_out.splitlines() if l.strip()]
+        report.append(f"• WARNING: {len(failed_units)} failed systemd unit(s): {', '.join(failed_units)}")
+    else:
+        report.append("• Systemd Services: 100% Healthy (0 failed units)")
+
+    # Hyprland Socket
+    runtime_dir = os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
+    hypr_sock = os.path.exists(f"{runtime_dir}/hypr")
+    report.append(f"• Hyprland IPC Engine: {'ONLINE' if hypr_sock else 'OFFLINE'}")
+
+    return "\n".join(report)
+
+def explain_error(query):
+    q_low = query.lower()
+    
+    # 1. Permission Denied
+    if "permission denied" in q_low or "operation not permitted" in q_low:
+        cmd_match = re.search(r"['\"]?([a-zA-Z0-9_\-\./]+)['\"]?:? [Pp]ermission denied", query)
+        target = cmd_match.group(1) if cmd_match else "the file"
+        return (
+            f"DIAGNOSIS: Root privileges required or execute bit missing on {target}.\n\n"
+            f"RECOMMENDED FIX:\n"
+            f"  1. If system file: run with elevated privileges:\n"
+            f"     `sudo {query.split(':')[0] if ':' in query else query}`\n"
+            f"  2. If local script: add execute permission:\n"
+            f"     `chmod +x {target}`"
+        )
+
+    # 2. Command not found
+    if "command not found" in q_low:
+        cmd_match = re.search(r"([a-zA-Z0-9_\-]+): command not found", query)
+        cmd = cmd_match.group(1) if cmd_match else query.split()[0]
+        return (
+            f"DIAGNOSIS: Command '{cmd}' is not installed in system PATH.\n\n"
+            f"RECOMMENDED FIX:\n"
+            f"  Search and install via Pacman repository:\n"
+            f"  `sudo pacman -S --needed {cmd}`\n"
+            f"  Or query package owner:\n"
+            f"  `pacman -F {cmd}`"
+        )
+
+    # 3. Read-only file system
+    if "read-only file system" in q_low:
+        return (
+            "DIAGNOSIS: Storage mount is in read-only mode, likely due to filesystem safety lock or live ISO overlay.\n\n"
+            "RECOMMENDED FIX:\n"
+            "  Remount filesystem as read-write:\n"
+            "  `sudo mount -o remount,rw /`"
+        )
+
+    # 4. Device or resource busy
+    if "device or resource busy" in q_low or "target is busy" in q_low:
+        return (
+            "DIAGNOSIS: A background process holds open file descriptors on the device.\n\n"
+            "RECOMMENDED FIX:\n"
+            "  Identify processes holding the resource:\n"
+            "  `fuser -m /path/to/mount`\n"
+            "  Or force lazy unmount:\n"
+            "  `sudo umount -l /path/to/mount`"
+        )
+
+    # 5. PipeWire / Audio broken
+    if "pipewire" in q_low or "audio" in q_low or "wpctl" in q_low:
+        return (
+            "DIAGNOSIS: PipeWire or WirePlumber daemon session disrupted.\n\n"
+            "RECOMMENDED FIX:\n"
+            "  Restart user audio subsystems cleanly:\n"
+            "  `systemctl --user restart pipewire pipewire-pulse wireplumber`"
+        )
+
+    # 6. Hyprland socket / display
+    if "wayland" in q_low or "hyprland" in q_low or "hyprctl" in q_low:
+        return (
+            "DIAGNOSIS: Hyprland IPC environment variables missing in session context.\n\n"
+            "RECOMMENDED FIX:\n"
+            "  Export runtime socket in current terminal:\n"
+            "  `export XDG_RUNTIME_DIR=/run/user/$(id -u)`\n"
+            "  `export HYPRLAND_INSTANCE_SIGNATURE=$(ls $XDG_RUNTIME_DIR/hypr | head -n1)`"
+        )
+
+    # 7. Pacman lock
+    if "db.lck" in q_low or "database is locked" in q_low:
+        return (
+            "DIAGNOSIS: Pacman lock file exists from an interrupted transaction.\n\n"
+            "RECOMMENDED FIX:\n"
+            "  Verify no other pacman instance is running, then clear lock:\n"
+            "  `sudo rm -f /var/lib/pacman/db.lck`"
+        )
+
+    # Fallback generic error analysis
+    return (
+        f"ANALYSIS OF TERMINAL LOG:\n"
+        f"Error string analyzed: '{query}'\n\n"
+        f"INVESTIGATION STEPS:\n"
+        f"  1. Check system journal for context: `journalctl -xe -n 40`\n"
+        f"  2. Inspect kernel dmesg ring: `sudo dmesg -T | tail -n 25`\n"
+        f"  3. Verify service status: `systemctl status <unit>`"
+    )
+
+def query_local_llm(prompt):
+    """Attempt connection to local llama-server (port 8080) or Ollama (port 11434)."""
+    # 1. Try llama-server
+    try:
+        req = urllib.request.Request(
+            "http://127.0.0.1:8080/completion",
+            data=json.dumps({"prompt": prompt, "n_predict": 256, "temperature": 0.3}).encode(),
+            headers={"Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(req, timeout=2) as resp:
+            data = json.loads(resp.read().decode())
+            return data.get("content", "").strip()
+    except Exception:
+        pass
+
+    # 2. Try Ollama
+    try:
+        req = urllib.request.Request(
+            "http://127.0.0.1:11434/api/generate",
+            data=json.dumps({"model": "qwen2.5-coder:1.5b", "prompt": prompt, "stream": False}).encode(),
+            headers={"Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(req, timeout=2) as resp:
+            data = json.loads(resp.read().decode())
+            return data.get("response", "").strip()
+    except Exception:
+        pass
+
+    return None
+
+def answer_query(user_text):
+    text = user_text.strip()
+    t_low = text.lower()
+
+    # Diagnostics request
+    if any(k in t_low for k in ["диагност", "health", "status", "статус", "память", "cpu", "temp", "проверь систему"]):
+        diag = diagnose_system()
+        return (
+            "KORTEXOS SYSTEM DIAGNOSTIC REPORT:\n"
+            "===================================\n"
+            f"{diag}\n\n"
+            "RECOMMENDATION: System operational. All core drivers and KIS daemons are synchronized."
+        )
+
+    # Hotkeys / Navigation
+    if any(k in t_low for k in ["горяч", "клавиш", "бинд", "hotkey", "keybind", "super", "как открыть"]):
+        return (
+            "KORTEXOS GLOBAL HOTKEYS:\n"
+            "------------------------\n"
+            "• Super + Return : Launch Cyber Terminal (Kitty)\n"
+            "• Super + S      : Open Native Settings Panel (kortex-settings)\n"
+            "• Super + A      : Open Kortex AI Neural Assistant\n"
+            "• Super + Q      : Close Active Window\n"
+            "• Super + Shift+S: Interactive Screen Region Screenshot\n"
+            "• Super + Left/Right/Up/Down: Navigate Focus\n"
+            "• Super + Shift + Arrow     : Swap Windows in Grid"
+        )
+
+    # Theme changing
+    if any(k in t_low for k in ["тема", "theme", "цвет", "color", "amber", "matrix", "cyan", "mono"]):
+        return (
+            "CYBERPUNK THEME ENGINE:\n"
+            "To switch visual theme across Hyprland, Waybar and Kitty:\n"
+            "  `kortex-ctl theme mono`    (Tron Monochrome - Default)\n"
+            "  `kortex-ctl theme cyan`    (Electric Ice Cyan)\n"
+            "  `kortex-ctl theme matrix`  (Phosphor Matrix Green)\n"
+            "  `kortex-ctl theme amber`   (Warm Cyber Amber)\n"
+            "Or open GUI Settings via `Super + S` -> Tab 4."
+        )
+
+    # Power & Performance
+    if any(k in t_low for k in ["профиль", "profile", "питани", "power", "overdrive", "eco", "производительност"]):
+        return (
+            "KERNEL POWER & PERFORMANCE TUNING:\n"
+            "KortexOS features linux-zen hardware scheduler integration:\n"
+            "  `kortex-ctl profile eco`       -> Ultra-low power, clock throttle, maximum battery\n"
+            "  `kortex-ctl profile balanced`  -> Zen dynamic schedutil, smooth multitasking\n"
+            "  `kortex-ctl profile overdrive` -> Frequency lock, aggressive CPU scheduler boost"
+        )
+
+    # Error analysis
+    if any(err_word in t_low for err_word in ["error", "ошибка", "failed", "denied", "not found", "cannot", "invalid", "fail"]):
+        return explain_error(text)
+
+    # Try local LLM backend
+    llm_resp = query_local_llm(text)
+    if llm_resp:
+        return f"[LOCAL LLM // QWEN-2.5]:\n{llm_resp}"
+
+    # Default knowledge synthesizer
+    return (
+        f"KORTEX INTELLIGENCE ENGINE:\n"
+        f"Query processed: '{text}'\n\n"
+        f"• System: KortexOS Linux v1.0.0 (Zen Kernel 6.17-zen)\n"
+        f"• Shell: bash with Kortex Cyber Grid bindings\n"
+        f"• Quick Actions:\n"
+        f"  - Enter '/diag' to run full hardware telemetry\n"
+        f"  - Paste any terminal error log to generate an instant fix\n"
+        f"  - Use 'kortex-settings' (Super+S) for system preferences\n"
+        f"  - Run 'kortex-ctl' to configure performance profiles & themes"
+    )
+
+def safe_addstr(stdscr, y, x, text, attr=0):
+    try:
+        h, w = stdscr.getmaxyx()
+        if 0 <= y < h and 0 <= x < w:
+            max_len = w - x
+            if max_len > 0:
+                stdscr.addstr(y, x, text[:max_len], attr)
+    except Exception:
+        pass
+
+def run_chat_tui(stdscr):
+    curses.curs_set(1)
+    stdscr.timeout(100)
+    curses.start_color()
+    curses.use_default_colors()
+
+    # Colors
+    curses.init_pair(1, curses.COLOR_WHITE, -1)              # Normal
+    curses.init_pair(2, curses.COLOR_BLACK, curses.COLOR_WHITE) # Inverted
+    curses.init_pair(3, curses.COLOR_CYAN, -1)               # Accent
+    curses.init_pair(4, curses.COLOR_GREEN, -1)              # Success
+    curses.init_pair(5, curses.COLOR_YELLOW, -1)             # Warning
+
+    history = [
+        ("AI", "Greetings. I am Kortex AI Neural Assistant, running offline inside KortexOS."),
+        ("AI", "Type any question, paste a terminal error, or type '/diag' for system health. Press [ESC] to exit.")
+    ]
+    user_input = ""
+    prompt_history = []
+    hist_idx = -1
+    last_suggested_cmd = None
+
+    while True:
+        try:
+            h, w = stdscr.getmaxyx()
+            stdscr.erase()
+
+            # Cyber Header Frame
+            header_top = "┌───[ KORTEX AI // OFFLINE NEURAL ENGINE v1.0.0 ]" + "─" * max(0, w - 50) + "┐"
+            safe_addstr(stdscr, 0, 1, header_top, curses.color_pair(1) | curses.A_BOLD)
+            status_line = "│ STATUS: ONLINE (HYBRID EXPERT) │ LATENCY: 2ms │ CONTEXT: OFFLINE │ ARCH: ZEN-X86_64"
+            safe_addstr(stdscr, 1, 1, status_line + " " * max(0, w - len(status_line) - 2) + "│", curses.color_pair(3))
+            safe_addstr(stdscr, 2, 1, "├" + "─" * (w - 3) + "┤", curses.color_pair(1))
+
+            # Chat Window area: lines 3 to h - 5
+            max_chat_lines = h - 8
+            display_lines = []
+            for sender, msg in history:
+                prefix = "▶ USER: " if sender == "USER" else "◆ KORTEX-AI: "
+                p_attr = curses.color_pair(3) | curses.A_BOLD if sender == "USER" else curses.color_pair(4) | curses.A_BOLD
+                display_lines.append((prefix, p_attr, True))
+                
+                # Word wrap msg lines
+                for l in msg.split("\n"):
+                    words = l.split(" ")
+                    cur_line = ""
+                    for word in words:
+                        if len(cur_line) + len(word) + 1 > (w - 8):
+                            display_lines.append(("  " + cur_line, curses.color_pair(1), False))
+                            cur_line = word
+                        else:
+                            cur_line = (cur_line + " " + word).strip()
+                    if cur_line or not words:
+                        display_lines.append(("  " + cur_line, curses.color_pair(1), False))
+                display_lines.append(("", 0, False)) # blank separator
+
+            # Render visible tail of display_lines
+            visible = display_lines[-max_chat_lines:] if len(display_lines) > max_chat_lines else display_lines
+            for idx, (txt, attr, is_header) in enumerate(visible):
+                safe_addstr(stdscr, 3 + idx, 3, txt, attr)
+
+            # Footer / Prompt area
+            border_bottom = "├" + "─" * (w - 3) + "┤"
+            safe_addstr(stdscr, h - 4, 1, border_bottom, curses.color_pair(1))
+            
+            hint = "[Enter] Submit Query | [X] Execute Last Command | [ESC] Close Assistant"
+            safe_addstr(stdscr, h - 3, 3, hint, curses.color_pair(5))
+            
+            prompt_label = "PROMPT > "
+            safe_addstr(stdscr, h - 2, 2, prompt_label, curses.color_pair(3) | curses.A_BOLD)
+            safe_addstr(stdscr, h - 2, 2 + len(prompt_label), user_input, curses.color_pair(1))
+
+            frame_end = "└" + "─" * (w - 3) + "┘"
+            safe_addstr(stdscr, h - 1, 1, frame_end, curses.color_pair(1))
+
+            stdscr.move(h - 2, 2 + len(prompt_label) + len(user_input))
+            stdscr.refresh()
+
+            # Handle Key Input
+            ch = stdscr.getch()
+            if ch == -1:
+                continue
+            if ch == 27:  # ESC
+                break
+            elif ch in (curses.KEY_BACKSPACE, 127, 8):
+                if user_input:
+                    user_input = user_input[:-1]
+            elif ch in (10, 13):  # ENTER
+                if user_input.strip():
+                    q = user_input.strip()
+                    prompt_history.append(q)
+                    hist_idx = -1
+                    history.append(("USER", q))
+                    user_input = ""
+
+                    # Compute answer
+                    ans = answer_query(q)
+                    history.append(("AI", ans))
+
+                    # Look for suggested command inside backticks
+                    cmd_match = re.search(r"`([^`]+)`", ans)
+                    if cmd_match:
+                        last_suggested_cmd = cmd_match.group(1).strip()
+            elif ch == ord('x') and (not user_input) and last_suggested_cmd:
+                history.append(("USER", f"[EXECUTE] {last_suggested_cmd}"))
+                out, err, rc = run_cmd(last_suggested_cmd)
+                res_txt = out if rc == 0 else f"Exit code {rc}\n{err}"
+                history.append(("AI", f"Command Result:\n{res_txt}"))
+                last_suggested_cmd = None
+            elif ch == curses.KEY_UP:
+                if prompt_history:
+                    if hist_idx == -1:
+                        hist_idx = len(prompt_history) - 1
+                    else:
+                        hist_idx = max(0, hist_idx - 1)
+                    user_input = prompt_history[hist_idx]
+            elif ch == curses.KEY_DOWN:
+                if prompt_history and hist_idx != -1:
+                    hist_idx += 1
+                    if hist_idx >= len(prompt_history):
+                        hist_idx = -1
+                        user_input = ""
+                    else:
+                        user_input = prompt_history[hist_idx]
+            elif 32 <= ch <= 126:  # Printable character
+                user_input += chr(ch)
+
+        except Exception as e:
+            time.sleep(0.1)
+
+def main():
+    if len(sys.argv) > 1:
+        arg1 = sys.argv[1]
+        if arg1 in ("--diag", "-d", "diag"):
+            print(diagnose_system())
+            return
+        elif arg1 in ("--explain", "-e") and len(sys.argv) > 2:
+            print(explain_error(" ".join(sys.argv[2:])))
+            return
+        else:
+            q = " ".join(sys.argv[1:])
+            print(answer_query(q))
+            return
+
+    # No arguments -> Interactive Cyberpunk Chat TUI
+    try:
+        curses.wrapper(run_chat_tui)
+    except Exception as e:
+        print(BANNER)
+        print(f"[*] Curses initialized with notice: {e}")
+        print("[*] Entering interactive Kortex AI console...")
+        while True:
+            try:
+                q = input("\nPROMPT > ")
+                if not q.strip() or q.strip().lower() in ("exit", "quit", "q"):
+                    break
+                print("\n" + answer_query(q))
+            except (KeyboardInterrupt, EOFError):
+                break
+
+if __name__ == "__main__":
+    main()

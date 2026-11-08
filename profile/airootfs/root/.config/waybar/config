@@ -1,0 +1,127 @@
+{
+    "layer": "top",
+    "position": "top",
+    "height": 26,
+    "modules-left": [
+        "custom/menu",
+        "custom/layout",
+        "custom/win-min",
+        "custom/win-max",
+        "custom/win-close",
+        "custom/store",
+        "custom/ai",
+        "custom/settings",
+        "custom/guard",
+        "wlr/taskbar"
+    ],
+    "modules-center": [
+        "custom/plugins",
+        "custom/logo"
+    ],
+    "modules-right": [
+        "network",
+        "cpu",
+        "memory",
+        "disk",
+        "battery",
+        "clock"
+    ],
+
+    "custom/menu": {
+        "format": "[ KORTEX ]",
+        "on-click": "/usr/local/bin/kortex-menu",
+        "tooltip": "Main Menu // Applications (Super / Super+D)"
+    },
+    "custom/layout": {
+        "exec": "/usr/local/bin/kortex-layout waybar",
+        "return-type": "json",
+        "interval": 2,
+        "on-click": "/usr/local/bin/kortex-layout next",
+        "tooltip": "Switch Desktop Mode: Grid / Tiling / Floating (Super+Tab)"
+    },
+    "custom/win-min": {
+        "format": "[ _ ]",
+        "on-click": "hyprctl dispatch togglefloating",
+        "tooltip": "Toggle Floating / Tile Window"
+    },
+    "custom/win-max": {
+        "format": "[ □ ]",
+        "on-click": "hyprctl dispatch fullscreen 1",
+        "tooltip": "Maximize / Unmaximize Active Window"
+    },
+    "custom/win-close": {
+        "format": "[ ✕ CLOSE ]",
+        "on-click": "hyprctl dispatch killactive",
+        "tooltip": "Close Active Window (Alt+F4 / Super+Q)"
+    },
+    "custom/store": {
+        "format": "[STORE]",
+        "on-click": "/usr/local/bin/kortex-open store",
+        "tooltip": "Kortex App Hub & Software Center (Super+P)"
+    },
+    "custom/ai": {
+        "format": "[AI]",
+        "on-click": "/usr/local/bin/kortex-open ai",
+        "tooltip": "Kortex AI Assistant (Super+A)"
+    },
+    "custom/settings": {
+        "format": "[SET]",
+        "on-click": "/usr/local/bin/kortex-open settings",
+        "tooltip": "Kortex Control Panel & Theme Studio (Super+S)"
+    },
+    "custom/guard": {
+        "format": "[NET]",
+        "on-click": "/usr/local/bin/kortex-open net-guard",
+        "tooltip": "Network Sentinel & Panic Lockdown (Super+N)"
+    },
+    "wlr/taskbar": {
+        "format": "{icon} {name}",
+        "icon-size": 14,
+        "tooltip-format": "{title}",
+        "on-click": "activate",
+        "on-click-middle": "close",
+        "ignore-list": [
+            "kortex-pulse",
+            "kortex-term",
+            "kortex-net",
+            "kortex-files",
+            "kortex-kb"
+        ]
+    },
+    "custom/plugins": {
+        "exec": "/usr/local/bin/kortex-plugin-status",
+        "return-type": "json",
+        "interval": 3,
+        "on-click": "/usr/local/bin/kortex-menu",
+        "tooltip": "User Plugins in ~/.config/kortex/plugins/"
+    },
+    "custom/logo": {
+        "format": "[KORTEX-OS]"
+    },
+    "network": {
+        "format-wifi": "Net: {signalStrength}%",
+        "format-ethernet": "Net: {ipaddr}",
+        "format-disconnected": "Net: Offline",
+        "tooltip-format": "{ifname}: {ipaddr}"
+    },
+    "cpu": {
+        "interval": 2,
+        "format": "CPU: {usage}%"
+    },
+    "memory": {
+        "interval": 2,
+        "format": "RAM: {percentage}%"
+    },
+    "disk": {
+        "interval": 30,
+        "format": "Disk: {percentage_used}%"
+    },
+    "battery": {
+        "format": "Battery: {capacity}%",
+        "format-charging": "Battery: {capacity}% [AC]"
+    },
+    "clock": {
+        "interval": 1,
+        "format": "{:%H:%M:%S}"
+    }
+}

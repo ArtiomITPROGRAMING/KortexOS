@@ -1,0 +1,14 @@
+[Unit]
+Description=Kortex Link Smartphone Companion Daemon
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/kortex-link-daemon
+Restart=always
+RestartSec=5
+User=kortex
+Environment=HOME=/home/kortex
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,150 @@
+#!/usr/bin/env python3
+"""
+KortexOS File Grid Subsystem (eDEX-UI Tron Style)
+Interactive 6-column x 3-row tile grid of folder and file icons with keyboard navigation.
+"""
+
+import curses
+import os
+import sys
+
+def get_directory_items(path):
+    dirs = []
+    files = []
+    try:
+        with os.scandir(path) as it:
+            for entry in it:
+                try:
+                    if entry.is_dir(follow_symlinks=False):
+                        dirs.append(entry.name)
+                    else:
+                        files.append(entry.name)
+                except Exception:
+                    continue
+    except Exception:
+        dirs = ["bin", "dev", "etc", "home", "lib", "opt", "proc", "root", "run", "sbin", "sys", "tmp", "usr", "var"]
+    dirs.sort()
+    files.sort()
+    return dirs + files
+
+def draw_file_grid(stdscr):
+    curses.curs_set(0)
+    stdscr.nodelay(False)
+    curses.start_color()
+    curses.use_default_colors()
+    curses.init_pair(1, curses.COLOR_WHITE, -1)   # Standard white
+    curses.init_pair(2, 8, -1)                    # Grey (dim)
+    curses.init_pair(3, curses.COLOR_BLACK, curses.COLOR_WHITE) # Inverted active
+
+    current_path = "/"
+    items = get_directory_items(current_path)
+    selected_idx = 0
+
+    while True:
+        try:
+            h, w = stdscr.getmaxyx()
+            stdscr.erase()
+
+            if h < 6 or w < 20:
+                stdscr.addstr(0, 0, "[KORTEX-FILES]", curses.color_pair(1))
+                stdscr.refresh()
+                key = stdscr.getch()
+                if key == ord('q'):
+                    break
+                continue
+
+            # Header
+            stdscr.addstr(0, 1, f"~ {current_path}", curses.color_pair(1) | curses.A_BOLD)
+            if not items:
+                stdscr.addstr(2, 4, "No items found.", curses.color_pair(2))
+
+            # Grid calculation
+            col_w = 9
+            row_h = 4
+            num_cols = max(1, min(6, (w - 2) // col_w))
+            num_rows = max(1, (h - 4) // row_h)
+            visible_capacity = num_cols * num_rows
+
+            # Ensure valid selection
+            if selected_idx >= len(items):
+                selected_idx = max(0, len(items) - 1)
+
+            # Scroll window if needed
+            start_idx = (selected_idx // visible_capacity) * visible_capacity
+            visible_items = items[start_idx:start_idx + visible_capacity]
+
+            # Render Grid
+            for i, name in enumerate(visible_items):
+                actual_idx = start_idx + i
+                grid_c = i % num_cols
+                grid_r = i // num_cols
+
+                x = 2 + grid_c * col_w
+                y = 2 + grid_r * row_h
+
+                if y + 3 >= h - 1 or x + col_w > w:
+                    continue
+
+                is_selected = (actual_idx == selected_idx)
+                box_pair = curses.color_pair(3) if is_selected else curses.color_pair(1)
+                text_pair = curses.color_pair(3) if is_selected else curses.color_pair(2)
+
+                full_path = os.path.join(current_path, name)
+                is_dir = os.path.isdir(full_path)
+                icon_glyph = "" if is_dir else ""
+
+                # 3-line Folder Box
+                stdscr.addstr(y, x, "╭───╮", box_pair)
+                stdscr.addstr(y + 1, x, f"│ {icon_glyph} │", box_pair)
+                stdscr.addstr(y + 2, x, "╰───╯", box_pair)
+
+                # Label under box
+                disp_name = (name[:col_w - 2] + "..") if len(name) > col_w - 1 else name
+                label_x = max(1, x + (5 - len(disp_name)) // 2)
+                stdscr.addstr(y + 3, label_x, disp_name, text_pair | (curses.A_BOLD if is_selected else 0))
+
+            # Footer / Status line (eDEX-UI style)
+            footer_y = h - 1
+            status_txt = f"NOR  0B    Top {selected_idx + 1}/{len(items)}   [ENTER] Open   [BACKSPACE] Back"
+            stdscr.addstr(footer_y, 1, status_txt[:w - 2], curses.color_pair(2))
+
+            stdscr.refresh()
+
+            # Handle user navigation
+            ch = stdscr.getch()
+            if ch == ord('q'):
+                break
+            elif ch == curses.KEY_RIGHT or ch == ord('l'):
+                if selected_idx + 1 < len(items):
+                    selected_idx += 1
+            elif ch == curses.KEY_LEFT or ch == ord('h'):
+                if selected_idx > 0:
+                    selected_idx -= 1
+            elif ch == curses.KEY_DOWN or ch == ord('j'):
+                if selected_idx + num_cols < len(items):
+                    selected_idx += num_cols
+            elif ch == curses.KEY_UP or ch == ord('k'):
+                if selected_idx - num_cols >= 0:
+                    selected_idx -= num_cols
+            elif ch in (10, 13, curses.KEY_ENTER):
+                if items:
+                    target = os.path.join(current_path, items[selected_idx])
+                    if os.path.isdir(target):
+                        current_path = os.path.abspath(target)
+                        items = get_directory_items(current_path)
+                        selected_idx = 0
+            elif ch in (curses.KEY_BACKSPACE, 127, 8):
+                if current_path != "/":
+                    current_path = os.path.dirname(current_path) or "/"
+                    items = get_directory_items(current_path)
+                    selected_idx = 0
+        except curses.error:
+            pass
+        except Exception:
+            time.sleep(0.1)
+
+def main():
+    curses.wrapper(draw_file_grid)
+
+if __name__ == '__main__':
+    main()

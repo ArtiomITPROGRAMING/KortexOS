@@ -1,0 +1,377 @@
+#!/usr/bin/env python3
+"""
+==============================================================================
+KORTEX-TOUR: Interactive Guided System Tour & Welcome Navigator
+Designed for newcomers and advanced users alike.
+Provides step-by-step explanations, live feature demonstrations,
+desktop mode switching, spotlight testing, and persistence guide.
+==============================================================================
+"""
+
+import os
+import sys
+import curses
+import subprocess
+import json
+
+STATE_FILE = os.path.expanduser("~/.config/kortex/.tour_done")
+CONF_DIR = os.path.expanduser("~/.config/kortex")
+
+STEPS = [
+    {
+        "id": 1,
+        "title": "ДОБРО ПОЖАЛОВАТЬ // ВВЕДЕНИЕ",
+        "short": "1:СТАРТ",
+        "content": [
+            ("title", "🌌 ДОБРО ПОЖАЛОВАТЬ В KORTEXOS (v1.0.0 STABLE)"),
+            ("text", "KortexOS — это высокопроизводительная гибридная операционная система"),
+            ("text", "нового поколения на базе Arch Linux, ядра Linux-Zen и Wayland Hyprland."),
+            ("blank", ""),
+            ("bullet", "✦ СИНТЕЗ ДВУХ МИРОВ:"),
+            ("text", "  • Эстетика киберпанка: фирменная модульная сетка eDEX-UI и неоновый HUD."),
+            ("text", "  • Эргономика macOS: матовое стекло (Glassmorphism), Spotlight и жесты."),
+            ("blank", ""),
+            ("bullet", "✦ ДЛЯ КОГО ЭТА СИСТЕМА:"),
+            ("text", "  • Для обычных пользователей: интуитивное управление мышкой, верхний бар,"),
+            ("text", "    кнопки закрытия [ ✕ ], меню Пуск и готовый браузер Firefox."),
+            ("text", "  • Для разработчиков и хакеров: полноэкранный тайлинг, молниеносные"),
+            ("text", "    хоткеи, терминал Kitty, файловый менеджер Yazi и мониторинг Btop."),
+            ("blank", ""),
+            ("tip", "💡 ИСПОЛЬЗУЙТЕ СТРЕЛКИ [◄] И [►] ИЛИ КЛАВИШИ [1-6] ДЛЯ НАВИГАЦИИ ПО ТУРУ.")
+        ]
+    },
+    {
+        "id": 2,
+        "title": "ТРИ ФИЛОСОФИИ РАБОЧЕГО СТОЛА",
+        "short": "2:РЕЖИМЫ СТОЛА",
+        "content": [
+            ("title", "⚡ ТРИ РЕЖИМА ИНТЕРФЕЙСА (ПЕРЕКЛЮЧЕНИЕ ЧЕРЕЗ SUPER + TAB)"),
+            ("text", "Вам не нужно выбирать один стиль навсегда. KortexOS мгновенно меняет форму:"),
+            ("blank", ""),
+            ("bullet", "1. CYBER-DECK (eDEX Grid Mode):"),
+            ("text", "   Рабочая станция из 5 модулей: пульс процессора, центр shell-терминала,"),
+            ("text", "   3D-глобус сети, быстрый проводник файлов и виртуальная клавиатура."),
+            ("blank", ""),
+            ("bullet", "2. MACBOOK PRO MODE (Glass & Dock):"),
+            ("text", "   Плавающие окна со скругленными краями, матовое размытие фона (blur),"),
+            ("text", "   кнопки мыши [ _ ] [ □ ] [ ✕ ] на панели и поддержка жестов тачпада."),
+            ("blank", ""),
+            ("bullet", "3. PURE TILING (Pro Dev Mode):"),
+            ("text", "   Строгий тайлинг окон на весь экран без декораций для максимальной"),
+            ("text", "   концентрации при написании кода и администрировании."),
+            ("blank", ""),
+            ("action", "[G] Включить режим Cyber-Deck прямо сейчас"),
+            ("action", "[M] Включить режим MacBook Pro Glass прямо сейчас"),
+            ("action", "[T] Включить режим Pure Tiling прямо сейчас")
+        ]
+    },
+    {
+        "id": 3,
+        "title": "УПРАВЛЕНИЕ МЫШКОЙ И ВЕРХНИЙ БАР",
+        "short": "3:МЫШЬ И БАР",
+        "content": [
+            ("title", "🖱️ НАВИГАЦИЯ ДЛЯ ОБЫЧНЫХ ПОЛЬЗОВАТЕЛЕЙ (WAYBAR & DOCK)"),
+            ("text", "В верхней части экрана расположена умная панель быстрого доступа:"),
+            ("blank", ""),
+            ("bullet", "✦ ЛЕВАЯ ЧАСТЬ ПАНЕЛИ:"),
+            ("text", "  • [ KORTEX ] — Главное меню 'Пуск'. Кликните мышкой или нажмите Super."),
+            ("text", "  • [ GRID / TILE / FLOAT ] — Кнопка смены режима стола одним кликом."),
+            ("text", "  • [ _ ] — Переключить плавающее окно / зафиксировать в сетке."),
+            ("text", "  • [ □ ] — Развернуть окно на весь экран (Fullscreen)."),
+            ("text", "  • [ ✕ CLOSE ] — Закрыть активное окно мышкой (или хоткей Alt+F4 / Super+Q)."),
+            ("text", "  • [STORE] / [AI] / [SET] — Магазин софта, ИИ-ассистент и Панель настроек."),
+            ("blank", ""),
+            ("bullet", "✦ ПРАВАЯ ЧАСТЬ ПАНЕЛИ (СИСТЕМНЫЙ ТРЕЙ):"),
+            ("text", "  • Статус сети Wi-Fi / LAN, загрузка процессора, память ZRAM и батарея."),
+            ("text", "  • Часы и дата: кликните, чтобы открыть подробный календарь."),
+            ("text", "  • Кнопка [ ? GUIDE ] открывает этот справочник в любую секунду.")
+        ]
+    },
+    {
+        "id": 4,
+        "title": "KORTEX SPOTLIGHT (SUPER + SPACE)",
+        "short": "4:SPOTLIGHT",
+        "content": [
+            ("title", "🔍 УМНЫЙ ПОИСК И КАЛЬКУЛЯТОР KORTEX SPOTLIGHT"),
+            ("text", "Нажмите комбинацию клавиш [SUPER + ПРОБЕЛ] в любой момент:"),
+            ("blank", ""),
+            ("bullet", "1. МОЛНИЕНОСНЫЙ ЗАПУСК ПРОГРАММ:"),
+            ("text", "   Начните вводить имя: 'fire' -> Firefox, 'set' -> Настройки, 'yazi' -> Файлы."),
+            ("blank", ""),
+            ("bullet", "2. ВСТРОЕННЫЙ МАТЕМАТИЧЕСКИЙ КАЛЬКУЛЯТОР:"),
+            ("text", "   Вводите вычисления прямо в строку поиска:"),
+            ("text", "   • 42 * 8          =>  = 336"),
+            ("text", "   • sqrt(144)       =>  = 12.0"),
+            ("text", "   • (1250 - 450) / 4 =>  = 200.0"),
+            ("blank", ""),
+            ("bullet", "3. МГНОВЕННЫЕ СИСТЕМНЫЕ КОМАНДЫ:"),
+            ("text", "   • 'theme matrix'    => Переключить цвета на зеленый Matrix"),
+            ("text", "   • 'theme tokyonight' => Переключить на ночной индиго"),
+            ("text", "   • 'layout macbook'  => Включить плавающие окна"),
+            ("blank", ""),
+            ("action", "[S] Нажмите S прямо сейчас, чтобы протестировать Spotlight!")
+        ]
+    },
+    {
+        "id": 5,
+        "title": "СТУДИЯ КАСТОМИЗАЦИИ И ОБОИ",
+        "short": "5:КАСТОМИЗАЦИЯ",
+        "content": [
+            ("title", "🎨 THEME STUDIO PRO И ПЕРСОНАЛИЗАЦИЯ (SUPER + S)"),
+            ("text", "KortexOS создана так, чтобы вы могли настроить каждый миллиметр системы:"),
+            ("blank", ""),
+            ("bullet", "✦ 7 СЛОЕВ ЦВЕТА И ГОТОВЫЕ ПРЕСЕТЫ:"),
+            ("text", "  • Cyber Cyan (#00f0ff) — Электрический киберпанк Трон (по умолчанию)."),
+            ("text", "  • Tokyo Night (#7aa2f7) — Глубокий ночной фиолетово-синий градиент."),
+            ("text", "  • Dracula (#bd93f9) — Готический контрастный темно-фиолетовый."),
+            ("text", "  • Matrix Phosphor (#00ff41) — Зеленый терминальный фосфор."),
+            ("text", "  • Amber CRT (#ffb000) — Теплый винтажный оранжевый экран 80-х."),
+            ("text", "  • Mono Tron (#ffffff) — Строгий минималистичный черно-белый."),
+            ("text", "  • Crimson Alert (#ff003c) — Тактический красный боевой интерфейс."),
+            ("blank", ""),
+            ("bullet", "✦ РАМКИ, СТЕКЛО И ОБОИ:"),
+            ("text", "  • Режимы рамки: Solid, Dual Gradient (угол 0-360°), Neon Loop, Glow Shadow."),
+            ("text", "  • Размытие (Blur): матовое стекло с регулировкой силы и прозрачности."),
+            ("text", "  • Обои рабочего стола + независимый фон терминала Kitty с затемнением."),
+            ("blank", ""),
+            ("action", "[C] Открыть Студию Настроек прямо сейчас")
+        ]
+    },
+    {
+        "id": 6,
+        "title": "ШПАРГАЛКА ХОТКЕЕВ И УСТАНОВКА",
+        "short": "6:ШПАРГАЛКА",
+        "content": [
+            ("title", "⌨️ ШПАРГАЛКА ГОРЯЧИХ КЛАВИШ И УСТАНОВКА НА ДИСК"),
+            ("text", "Запомните эти клавиши для максимального удобства (Super = клавиша Windows):"),
+            ("blank", ""),
+            ("text", "  [Super + Space]       Kortex Spotlight (Поиск, Калькулятор, Темы)"),
+            ("text", "  [Super + Tab]         Быстрое переключение режимов стола"),
+            ("text", "  [Super + Q] / [Alt+F4] Закрыть активное окно"),
+            ("text", "  [Super + Return]      Открыть терминал Kitty"),
+            ("text", "  [Super + D]           Главное меню программ (Rofi)"),
+            ("text", "  [Super + B]           Запустить браузер Firefox"),
+            ("text", "  [Super + E]           Проводник файлов Yazi"),
+            ("text", "  [Super + S]           Открыть Студию Настроек Kortex"),
+            ("text", "  [Super + F1]          Показать этот гид и справку"),
+            ("text", "  [Super + Shift + S]   Скриншот выделенной области экрана"),
+            ("blank", ""),
+            ("bullet", "✦ ВЕЧНОЕ СОХРАНЕНИЕ НАСТРОЕК (PERSISTENCE):"),
+            ("text", "  Когда будете готовы установить KortexOS на свой диск, запустите:"),
+            ("text", "  команду 'kortex-install' — все настроенные цвета, обои и параметры"),
+            ("text", "  будут автоматически перенесены в установленную систему!"),
+            ("blank", ""),
+            ("action", "[I] Запустить установщик на жесткий диск (kortex-install)"),
+            ("action", "[Enter / Q] Завершить тур и начать работу в KortexOS!")
+        ]
+    }
+]
+
+def run_bg(cmd):
+    try:
+        subprocess.Popen(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        pass
+
+def mark_tour_done():
+    os.makedirs(CONF_DIR, exist_ok=True)
+    try:
+        with open(STATE_FILE, "w", encoding="utf-8") as f:
+            f.write("done\n")
+    except Exception:
+        pass
+
+def draw_tour(stdscr):
+    curses.curs_set(0)
+    stdscr.keypad(True)
+    curses.use_default_colors()
+
+    # Define color pairs if possible
+    has_colors = curses.has_colors()
+    if has_colors:
+        curses.start_color()
+        curses.init_pair(1, curses.COLOR_CYAN, -1)     # Accent / cyan
+        curses.init_pair(2, curses.COLOR_GREEN, -1)    # Success / actions
+        curses.init_pair(3, curses.COLOR_YELLOW, -1)   # Highlights / tips
+        curses.init_pair(4, curses.COLOR_MAGENTA, -1)  # Headers
+        curses.init_pair(5, curses.COLOR_BLACK, curses.COLOR_CYAN) # Active tab
+        curses.init_pair(6, curses.COLOR_RED, -1)      # Alert / close
+
+    current_step = 0
+    total_steps = len(STEPS)
+
+    while True:
+        stdscr.clear()
+        max_y, max_x = stdscr.getmaxyx()
+
+        if max_y < 24 or max_x < 75:
+            stdscr.addstr(0, 0, "Окно слишком мало. Пожалуйста, увеличьте размер окна терминала.", curses.A_BOLD)
+            stdscr.refresh()
+            ch = stdscr.getch()
+            if ch in (ord('q'), ord('Q'), 27):
+                break
+            continue
+
+        # Header ASCII banner
+        banner_top = "  ███████╗ ██████╗ ██████╗ ████████╗███████╗██╗  ██╗    ████████╗ ██████╗ ██╗   ██╗██████╗ "
+        banner_bot = "  ██╔════╝██╔═══██╗██╔══██╗╚══██╔══╝██╔════╝╚██╗██╔╝    ╚══██╔══╝██╔═══██╗██║   ██║██╔══██╗"
+        tagline    = "  >> KORTEX OS :: ИНТЕРАКТИВНЫЙ ПРОВОДНИК И ТУР ПО СИСТЕМЕ (v1.0.0) <<"
+
+        try:
+            if has_colors:
+                stdscr.attron(curses.color_pair(1) | curses.A_BOLD)
+            stdscr.addstr(1, max(0, (max_x - len(banner_top)) // 2), banner_top[:max_x-1])
+            stdscr.addstr(2, max(0, (max_x - len(banner_bot)) // 2), banner_bot[:max_x-1])
+            stdscr.addstr(3, max(0, (max_x - len(tagline)) // 2), tagline[:max_x-1])
+            if has_colors:
+                stdscr.attroff(curses.color_pair(1) | curses.A_BOLD)
+        except curses.error:
+            pass
+
+        # Navigation Tabs
+        tab_y = 5
+        tab_str = " "
+        try:
+            curr_x = 2
+            for i, st in enumerate(STEPS):
+                name = f" {st['short']} "
+                if i == current_step:
+                    if has_colors:
+                        stdscr.attron(curses.color_pair(5) | curses.A_BOLD)
+                    stdscr.addstr(tab_y, curr_x, name)
+                    if has_colors:
+                        stdscr.attroff(curses.color_pair(5) | curses.A_BOLD)
+                else:
+                    if has_colors:
+                        stdscr.attron(curses.A_DIM)
+                    stdscr.addstr(tab_y, curr_x, name)
+                    if has_colors:
+                        stdscr.attroff(curses.A_DIM)
+                curr_x += len(name) + 2
+        except curses.error:
+            pass
+
+        # Horizontal Divider
+        try:
+            stdscr.addstr(6, 1, "─" * (max_x - 2))
+        except curses.error:
+            pass
+
+        # Step Content Card
+        step_data = STEPS[current_step]
+        content_y = 8
+
+        for item_type, text in step_data["content"]:
+            if content_y >= max_y - 4:
+                break
+            try:
+                if item_type == "title":
+                    if has_colors:
+                        stdscr.attron(curses.color_pair(1) | curses.A_BOLD)
+                    stdscr.addstr(content_y, 4, text[:max_x-6])
+                    if has_colors:
+                        stdscr.attroff(curses.color_pair(1) | curses.A_BOLD)
+                    content_y += 2
+                elif item_type == "bullet":
+                    if has_colors:
+                        stdscr.attron(curses.color_pair(3) | curses.A_BOLD)
+                    stdscr.addstr(content_y, 4, text[:max_x-6])
+                    if has_colors:
+                        stdscr.attroff(curses.color_pair(3) | curses.A_BOLD)
+                    content_y += 1
+                elif item_type == "text":
+                    stdscr.addstr(content_y, 6, text[:max_x-8])
+                    content_y += 1
+                elif item_type == "action":
+                    if has_colors:
+                        stdscr.attron(curses.color_pair(2) | curses.A_BOLD)
+                    stdscr.addstr(content_y, 6, f"▶  {text[:max_x-10]}")
+                    if has_colors:
+                        stdscr.attroff(curses.color_pair(2) | curses.A_BOLD)
+                    content_y += 1
+                elif item_type == "tip":
+                    if has_colors:
+                        stdscr.attron(curses.color_pair(3))
+                    stdscr.addstr(content_y, 4, text[:max_x-6])
+                    if has_colors:
+                        stdscr.attroff(curses.color_pair(3))
+                    content_y += 1
+                elif item_type == "blank":
+                    content_y += 1
+            except curses.error:
+                pass
+
+        # Footer Bar with Controls
+        footer_y = max_y - 2
+        try:
+            stdscr.addstr(max_y - 3, 1, "─" * (max_x - 2))
+            footer_text = f" [◄ Назад]  [Далее ►]  [1-6: Вкладки]  [G/M/T: Режимы]  [S: Поиск]  [C: Настройки]  [Q: Завершить] ({current_step+1}/{total_steps})"
+            if has_colors:
+                stdscr.attron(curses.color_pair(1) | curses.A_BOLD)
+            stdscr.addstr(footer_y, max(1, (max_x - len(footer_text)) // 2), footer_text[:max_x-2])
+            if has_colors:
+                stdscr.attroff(curses.color_pair(1) | curses.A_BOLD)
+        except curses.error:
+            pass
+
+        stdscr.refresh()
+
+        # Handle User Input
+        key = stdscr.getch()
+
+        if key in (curses.KEY_RIGHT, ord(' '), ord('n'), ord('N'), curses.KEY_DOWN):
+            if current_step < total_steps - 1:
+                current_step += 1
+            else:
+                mark_tour_done()
+                break
+        elif key in (curses.KEY_LEFT, ord('p'), ord('P'), curses.KEY_UP):
+            if current_step > 0:
+                current_step -= 1
+        elif ord('1') <= key <= ord('6'):
+            current_step = key - ord('1')
+        elif key in (ord('q'), ord('Q'), 27):
+            mark_tour_done()
+            break
+        elif key in (curses.KEY_ENTER, 10, 13):
+            if current_step == total_steps - 1:
+                mark_tour_done()
+                break
+            else:
+                current_step += 1
+        # Interactive Live Actions:
+        elif key in (ord('g'), ord('G')):
+            run_bg("/usr/local/bin/kortex-layout grid")
+        elif key in (ord('m'), ord('M')):
+            run_bg("/usr/local/bin/kortex-layout floating")
+        elif key in (ord('t'), ord('T')):
+            run_bg("/usr/local/bin/kortex-layout tiling")
+        elif key in (ord('s'), ord('S')):
+            run_bg("/usr/local/bin/kortex-spotlight")
+        elif key in (ord('c'), ord('C')):
+            run_bg("/usr/local/bin/kortex-open settings")
+        elif key in (ord('w'), ord('W')):
+            run_bg("/usr/local/bin/kortex-wallpaper desktop")
+        elif key in (ord('i'), ord('I')):
+            mark_tour_done()
+            curses.endwin()
+            os.system("/usr/local/bin/kortex-install")
+            break
+
+def main():
+    # If headless / no terminal, gracefully exit
+    if not sys.stdin.isatty():
+        print("[*] Kortex Tour requires an interactive terminal.")
+        sys.exit(0)
+
+    try:
+        curses.wrapper(draw_tour)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        mark_tour_done()
+        print("\n[+] Тур завершен! Добро пожаловать в KortexOS.")
+        print("[*] Вы всегда можете снова открыть этот гид командой 'kortex-tour' или через [ ? GUIDE ] в панели.")
+
+if __name__ == "__main__":
+    main()
