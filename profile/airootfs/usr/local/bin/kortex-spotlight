@@ -77,7 +77,9 @@ def main():
 
     # Pre-canned quick commands
     commands = {
+        "🎵 Music: Cyberdeck Audio & Synthwave Radio": "/usr/local/bin/kortex-open music",
         "📖 System Tour & Guide: Interactive Navigator": "/usr/local/bin/kortex-open tour",
+        "🏪 Store: Kortex App Hub (Software Center)": "/usr/local/bin/kortex-open store",
         "⚙️ Settings: Kortex Customization Studio": "/usr/local/bin/kortex-settings",
         "🎨 Theme: Cyber Cyan (Neon Blue)": "/usr/local/bin/kortex-theme-apply --theme cyan",
         "🎨 Theme: Tokyo Night (Indigo & Lavender)": "/usr/local/bin/kortex-theme-apply --theme tokyonight",
@@ -187,6 +189,10 @@ def main():
 
     # 4. Check Quick CLI patterns
     lower = choice.lower().strip()
+    if lower in ("music", "player", "radio", "song", "play"):
+        subprocess.Popen("/usr/local/bin/kortex-open music", shell=True)
+        sys.exit(0)
+
     if lower in ("tour", "guide", "welcome", "help", "gid", "spravka"):
         subprocess.Popen("/usr/local/bin/kortex-open tour", shell=True)
         sys.exit(0)

@@ -120,7 +120,29 @@ def main():
     passed = (rc == 0 and "F1" in out)
     log_test("System Tour: Super+F1 hotkey binding", passed, f"Bind: {out}")
 
-    # TEST 11: VirtualBox Live Screen Capture
+    # TEST 11: Kortex Music & Synthwave Audio Deck
+    out, _, rc = run_ssh(client, "test -x /usr/local/bin/kortex-music && ls /usr/share/kortex/music/*.wav | wc -l")
+    try:
+        count = int(out.strip())
+        passed = (rc == 0 and count >= 2)
+    except Exception:
+        passed = False
+    log_test("Kortex Music: Executable & bundled synthwave tracks", passed, f"Demo tracks count: {out}")
+
+    out, _, rc = run_ssh(client, "grep -E 'kortex-open music' ~/.config/hypr/binds.conf")
+    passed = (rc == 0 and "M" in out)
+    log_test("Kortex Music: Super+M keybinding", passed, f"Bind: {out}")
+
+    # TEST 12: Kortex App Hub Catalog (apps.json)
+    out, _, rc = run_ssh(client, "cat /usr/share/kortex/apps.json")
+    try:
+        apps_data = json.loads(out)
+        passed = ("apps" in apps_data and len(apps_data["apps"]) >= 10)
+    except Exception:
+        passed = False
+    log_test("Kortex App Hub: Cloud catalog manifest presence", passed, f"Apps in catalog: {len(apps_data.get('apps', [])) if passed else 0}")
+
+    # TEST 13: VirtualBox Live Screen Capture
     screenshot_file = r"c:\Users\Lenovo\KortexOS\vbox_unified_engine_test.png"
     vbox_res = subprocess.run([
         r"C:\Program Files\Oracle\VirtualBox\VBoxManage.exe",

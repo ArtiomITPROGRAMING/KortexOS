@@ -18,6 +18,7 @@ GLOBAL_PLUGINS_DIR = "/usr/share/kortex/plugins"
 
 PINNED_ITEMS = [
     ("[+] Kortex App Hub (Software Center)", "/usr/local/bin/kortex-open store"),
+    ("[🎵] Kortex Music & Synthwave Radio",  "/usr/local/bin/kortex-open music"),
     ("[*] Kortex AI Assistant",             "/usr/local/bin/kortex-open ai"),
     ("[#] Kortex Settings & Theme Studio",  "/usr/local/bin/kortex-open settings"),
     ("[~] Switch Layout (Grid/Tile/Float)", "/usr/local/bin/kortex-layout next"),

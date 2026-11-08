@@ -63,6 +63,10 @@ case "$target" in
         kitty --instance-group="popup_tour_$RANDOM" --class kortex-tour -o background_opacity=1.0 -e /usr/local/bin/kortex-tour &
         cls="kortex-tour"
         ;;
+    music|player|radio)
+        kitty --instance-group="popup_music_$RANDOM" --class kortex-music -o background_opacity=1.0 -e /usr/local/bin/kortex-music &
+        cls="kortex-music"
+        ;;
     lock|locker)
         /usr/local/bin/kortex-lock &
         exit 0

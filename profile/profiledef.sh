@@ -27,6 +27,7 @@ file_permissions=(
   ["/usr/local/bin/livecd-sound"]="0:0:755"
   ["/usr/local/bin/kortex-layout"]="0:0:755"
   ["/usr/local/bin/kortex-profile"]="0:0:755"
+  ["/usr/local/bin/kortex-music"]="0:0:755"
   ["/usr/local/bin/kortex-tour"]="0:0:755"
   ["/usr/local/bin/kortex-guide"]="0:0:755"
   ["/usr/local/bin/kortex-help-hud"]="0:0:755"

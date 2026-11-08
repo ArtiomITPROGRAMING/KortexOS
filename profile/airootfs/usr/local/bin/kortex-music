@@ -1,0 +1,431 @@
+#!/usr/bin/env python3
+"""
+==============================================================================
+KORTEX-MUSIC: Cyberdeck Audio Station & Synthwave Stream Player
+Terminal-based high performance audio player for KortexOS.
+Features:
+- Live Cyberpunk & Lo-Fi internet radio streams (Nightwave Plaza, SomaFM, Lofi Girl)
+- Local audio file & library player (~/Music, /usr/share/kortex/music, .mp3, .wav, .flac, .ogg)
+- Animated ASCII VU-meter / Spectrum visualizer
+- Low-latency PipeWire / MPV backend with IPC controls
+- Waybar top panel live status sync
+==============================================================================
+"""
+
+import os
+import sys
+import time
+import json
+import socket
+import curses
+import random
+import glob
+import subprocess
+import threading
+
+IPC_SOCK = "/tmp/kortex-music-ipc.sock"
+STATUS_FILE = f"/run/user/{os.getuid()}/kortex-music.json"
+MUSIC_DIRS = [
+    os.path.expanduser("~/Music"),
+    "/usr/share/kortex/music",
+    os.path.expanduser("~/.config/kortex/music")
+]
+
+RADIO_STATIONS = [
+    ("Nightwave Plaza", "https://radio.plaza.one/mp3", "Vaporwave / Future Funk / Chill"),
+    ("Lofi Girl Stream", "https://play.streamafrica.net/lofigirl", "Lo-Fi Hip Hop / Coding Beats"),
+    ("Space Station Soma", "https://ice2.somafm.com/spacestation-128-mp3", "Sci-Fi Ambient & Space Soundscapes"),
+    ("DEF CON Radio", "https://ice2.somafm.com/defcon-128-mp3", "Cyberpunk / Hacker Electro / Industrial"),
+    ("Vaporwaves 128", "https://ice1.somafm.com/vaporwaves-128-mp3", "Dreamy retro 80s/90s Synthwave")
+]
+
+class MPVController:
+    def __init__(self):
+        self.proc = None
+        self.sock = None
+        self.current_title = "Stopped"
+        self.is_playing = False
+        self.is_paused = False
+        self.volume = 80
+        self.time_pos = 0.0
+        self.duration = 0.0
+        self.is_radio = False
+        self.start_mpv()
+
+    def start_mpv(self):
+        if os.path.exists(IPC_SOCK):
+            try:
+                os.unlink(IPC_SOCK)
+            except Exception:
+                pass
+        cmd = [
+            "mpv",
+            "--idle=yes",
+            f"--input-ipc-server={IPC_SOCK}",
+            "--no-video",
+            "--volume=80",
+            "--really-quiet"
+        ]
+        try:
+            self.proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            time.sleep(0.3)
+        except Exception as e:
+            print(f"[-] Could not start mpv: {e}")
+
+    def send_cmd(self, command_list):
+        if not os.path.exists(IPC_SOCK):
+            return None
+        try:
+            s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            s.settimeout(0.3)
+            s.connect(IPC_SOCK)
+            msg = json.dumps({"command": command_list}) + "\n"
+            s.sendall(msg.encode("utf-8"))
+            data = s.recv(4096)
+            s.close()
+            if data:
+                res = json.loads(data.decode("utf-8", errors="ignore").splitlines()[0])
+                return res.get("data")
+        except Exception:
+            return None
+
+    def play_url(self, url, title="Stream", is_radio=False):
+        self.current_title = title
+        self.is_radio = is_radio
+        self.is_playing = True
+        self.is_paused = False
+        self.send_cmd(["loadfile", url, "replace"])
+
+    def toggle_pause(self):
+        if self.is_playing:
+            self.send_cmd(["cycle", "pause"])
+            self.is_paused = not self.is_paused
+
+    def stop(self):
+        self.send_cmd(["stop"])
+        self.is_playing = False
+        self.is_paused = False
+        self.current_title = "Stopped"
+        self.update_waybar("Stopped")
+
+    def change_volume(self, delta):
+        self.volume = max(0, min(100, self.volume + delta))
+        self.send_cmd(["set_property", "volume", self.volume])
+
+    def poll_status(self):
+        if not self.is_playing:
+            return
+        # Fetch time pos
+        t = self.send_cmd(["get_property", "time-pos"])
+        if t is not None:
+            self.time_pos = float(t)
+        d = self.send_cmd(["get_property", "duration"])
+        if d is not None:
+            self.duration = float(d)
+        p = self.send_cmd(["get_property", "pause"])
+        if p is not None:
+            self.is_paused = bool(p)
+        title = self.send_cmd(["get_property", "media-title"])
+        if title:
+            self.current_title = str(title)
+
+        self.update_waybar(f"{self.current_title} ({'Paused' if self.is_paused else 'Playing'})")
+
+    def update_waybar(self, text):
+        try:
+            os.makedirs(os.path.dirname(STATUS_FILE), exist_ok=True)
+            data = {
+                "text": f"🎵 {text[:30]}",
+                "tooltip": f"Kortex Music: {self.current_title}\nVolume: {self.volume}%",
+                "class": "paused" if self.is_paused else ("playing" if self.is_playing else "stopped")
+            }
+            with open(STATUS_FILE, "w", encoding="utf-8") as f:
+                json.dump(data, f)
+        except Exception:
+            pass
+
+    def cleanup(self):
+        self.update_waybar("Off")
+        if self.proc:
+            try:
+                self.proc.terminate()
+            except Exception:
+                pass
+        if os.path.exists(IPC_SOCK):
+            try:
+                os.unlink(IPC_SOCK)
+            except Exception:
+                pass
+
+def scan_local_tracks():
+    tracks = []
+    for d in MUSIC_DIRS:
+        if os.path.exists(d):
+            for ext in ("*.mp3", "*.wav", "*.flac", "*.ogg", "*.m4a"):
+                for p in glob.glob(os.path.join(d, ext)):
+                    tracks.append((os.path.basename(p), p))
+    return sorted(tracks, key=lambda x: x[0].lower())
+
+def draw_visualizer(win, y, x, width, active):
+    # Renders an ASCII audio equalizer bar
+    chars = [" ", " ", "▂", "▃", "▄", "▅", "▆", "▇", "█"]
+    bars = []
+    for i in range(width):
+        if active:
+            # Generate simulated energetic wave
+            lvl = random.randint(1, 8)
+        else:
+            lvl = 0
+        bars.append(chars[lvl])
+    try:
+        win.addstr(y, x, "".join(bars), curses.color_pair(3) | curses.A_BOLD)
+    except curses.error:
+        pass
+
+def format_time(seconds):
+    if seconds <= 0:
+        return "--:--"
+    m = int(seconds // 60)
+    s = int(seconds % 60)
+    return f"{m:02d}:{s:02d}"
+
+def tui_music(stdscr, initial_file=None):
+    curses.curs_set(0)
+    stdscr.nodelay(True)
+    stdscr.timeout(150)
+
+    if curses.has_colors():
+        try:
+            curses.start_color()
+            curses.use_default_colors()
+            curses.init_pair(1, curses.COLOR_WHITE, -1)
+            curses.init_pair(2, curses.COLOR_BLACK, curses.COLOR_CYAN)
+            curses.init_pair(3, curses.COLOR_CYAN, -1)
+            curses.init_pair(4, curses.COLOR_GREEN, -1)
+            curses.init_pair(5, curses.COLOR_MAGENTA, -1)
+            curses.init_pair(6, curses.COLOR_YELLOW, -1)
+        except Exception:
+            pass
+
+    mpv = MPVController()
+    local_tracks = scan_local_tracks()
+    
+    mode = "radio" # "radio" | "local"
+    sel_idx = 0
+
+    if initial_file and os.path.exists(initial_file):
+        mode = "local"
+        mpv.play_url(initial_file, os.path.basename(initial_file), is_radio=False)
+    elif local_tracks:
+        # Default start with first demo track or first radio
+        mpv.play_url(local_tracks[0][1], local_tracks[0][0], is_radio=False)
+        mode = "local"
+    else:
+        # Start radio preset 0
+        mpv.play_url(RADIO_STATIONS[0][1], RADIO_STATIONS[0][0], is_radio=True)
+
+    try:
+        while True:
+            h, w = stdscr.getmaxyx()
+            stdscr.erase()
+
+            if h < 20 or w < 65:
+                stdscr.addstr(0, 0, "Увеличьте окно терминала для Kortex Music.", curses.A_BOLD)
+                stdscr.refresh()
+                ch = stdscr.getch()
+                if ch in (ord('q'), ord('Q'), 27):
+                    break
+                continue
+
+            mpv.poll_status()
+
+            # Outer Border
+            try:
+                stdscr.addstr(0, 0, "┌" + "─" * (w - 2) + "┐", curses.color_pair(3))
+                for y in range(1, h - 1):
+                    stdscr.addstr(y, 0, "│", curses.color_pair(3))
+                    stdscr.addstr(y, w - 1, "│", curses.color_pair(3))
+                stdscr.addstr(h - 1, 0, "└" + "─" * (w - 2) + "┘", curses.color_pair(3))
+            except curses.error:
+                pass
+
+            # Title
+            title = " 🎵 [ KORTEX CYBER AUDIO DECK // v1.0.0 ] 🎵 "
+            try:
+                stdscr.addstr(0, max(2, (w - len(title)) // 2), title, curses.color_pair(2) | curses.A_BOLD)
+            except curses.error:
+                pass
+
+            # Top Status Bar / Now Playing
+            status_text = "PAUSED" if mpv.is_paused else ("PLAYING" if mpv.is_playing else "STOPPED")
+            col_status = curses.color_pair(6) if mpv.is_paused else (curses.color_pair(4) if mpv.is_playing else curses.color_pair(1))
+            
+            try:
+                stdscr.addstr(2, 4, "STATUS: ", curses.color_pair(3) | curses.A_BOLD)
+                stdscr.addstr(2, 12, f"[{status_text}]", col_status | curses.A_BOLD)
+                stdscr.addstr(2, 24, f"VOLUME: {mpv.volume}%", curses.color_pair(1))
+
+                # Track Title
+                stdscr.addstr(3, 4, "TRACK:  ", curses.color_pair(3) | curses.A_BOLD)
+                stdscr.addstr(3, 12, mpv.current_title[:w - 16], curses.color_pair(1) | curses.A_BOLD)
+
+                # Progress / Time
+                if mpv.is_radio:
+                    time_str = "LIVE STREAM ●"
+                    stdscr.addstr(4, 4, "TIME:   ", curses.color_pair(3) | curses.A_BOLD)
+                    stdscr.addstr(4, 12, time_str, curses.color_pair(5) | curses.A_BOLD)
+                else:
+                    curr_str = format_time(mpv.time_pos)
+                    total_str = format_time(mpv.duration)
+                    prog_w = max(10, w - 36)
+                    ratio = (mpv.time_pos / mpv.duration) if mpv.duration > 0 else 0.0
+                    fill_w = int(ratio * prog_w)
+                    bar = "█" * fill_w + "░" * (prog_w - fill_w)
+                    stdscr.addstr(4, 4, f"TIME:   [{bar}] {curr_str} / {total_str}", curses.color_pair(1))
+            except curses.error:
+                pass
+
+            # Visualizer row
+            try:
+                stdscr.addstr(6, 4, "SPECTRUM: ", curses.color_pair(3))
+                is_vis_active = mpv.is_playing and not mpv.is_paused
+                draw_visualizer(stdscr, 6, 14, min(40, w - 18), is_vis_active)
+                stdscr.addstr(7, 2, "─" * (w - 4), curses.color_pair(3))
+            except curses.error:
+                pass
+
+            # Mode Switcher Tabs
+            try:
+                tab_radio = " [1] CYBER RADIO STATIONS "
+                tab_local = " [2] LOCAL AUDIO LIBRARY  "
+                attr_r = curses.color_pair(2) if mode == "radio" else curses.color_pair(1)
+                attr_l = curses.color_pair(2) if mode == "local" else curses.color_pair(1)
+                stdscr.addstr(8, 4, tab_radio, attr_r)
+                stdscr.addstr(8, 34, tab_local, attr_l)
+            except curses.error:
+                pass
+
+            # List of items
+            list_y = 10
+            max_list_h = h - list_y - 4
+
+            if mode == "radio":
+                for idx, (r_name, r_url, r_desc) in enumerate(RADIO_STATIONS):
+                    if idx >= max_list_h:
+                        break
+                    is_sel = (idx == sel_idx)
+                    attr = curses.color_pair(2) if is_sel else curses.color_pair(1)
+                    line = f" {idx+1}. {r_name:<22} │ {r_desc}"
+                    try:
+                        stdscr.addstr(list_y + idx, 4, line[:w - 8], attr)
+                    except curses.error:
+                        pass
+            else:
+                if not local_tracks:
+                    try:
+                        stdscr.addstr(list_y, 4, "В ~/Music пока нет аудиофайлов. Добавьте .mp3/.wav/.flac файлы.", curses.A_DIM)
+                    except curses.error:
+                        pass
+                else:
+                    for idx, (t_name, t_path) in enumerate(local_tracks[:max_list_h]):
+                        is_sel = (idx == sel_idx)
+                        attr = curses.color_pair(2) if is_sel else curses.color_pair(1)
+                        line = f" ▶ {t_name}"
+                        try:
+                            stdscr.addstr(list_y + idx, 4, line[:w - 8], attr)
+                        except curses.error:
+                            pass
+
+            # Footer Controls Bar
+            footer_text = " [SPACE] Play/Pause  [N] Next  [P] Prev  [S] Stop  [+/-] Vol  [1-5] Radio  [L] Local  [Q] Exit "
+            try:
+                stdscr.addstr(h - 2, max(2, (w - len(footer_text)) // 2), footer_text[:w - 4], curses.color_pair(2))
+            except curses.error:
+                pass
+
+            stdscr.refresh()
+
+            # Input handling
+            try:
+                ch = stdscr.getch()
+                if ch in (ord('q'), ord('Q'), 27):
+                    break
+                elif ch in (ord(' '),):
+                    mpv.toggle_pause()
+                elif ch in (ord('s'), ord('S')):
+                    mpv.stop()
+                elif ch in (ord('+'), ord('='), curses.KEY_RIGHT):
+                    mpv.change_volume(5)
+                elif ch in (ord('-'), ord('_'), curses.KEY_LEFT):
+                    mpv.change_volume(-5)
+                elif ch in (curses.KEY_UP, ord('k')):
+                    if sel_idx > 0:
+                        sel_idx -= 1
+                elif ch in (curses.KEY_DOWN, ord('j')):
+                    max_len = len(RADIO_STATIONS) if mode == "radio" else len(local_tracks)
+                    if sel_idx < max_len - 1:
+                        sel_idx += 1
+                elif ch in (10, 13, curses.KEY_ENTER):
+                    if mode == "radio":
+                        r_name, r_url, _ = RADIO_STATIONS[sel_idx]
+                        mpv.play_url(r_url, r_name, is_radio=True)
+                    else:
+                        if local_tracks:
+                            t_name, t_path = local_tracks[sel_idx]
+                            mpv.play_url(t_path, t_name, is_radio=False)
+                elif ord('1') <= ch <= ord('5'):
+                    r_idx = ch - ord('1')
+                    if r_idx < len(RADIO_STATIONS):
+                        mode = "radio"
+                        sel_idx = r_idx
+                        r_name, r_url, _ = RADIO_STATIONS[r_idx]
+                        mpv.play_url(r_url, r_name, is_radio=True)
+                elif ch in (ord('l'), ord('L')):
+                    mode = "local"
+                    sel_idx = 0
+                elif ch in (ord('n'), ord('N')):
+                    # Next track
+                    if mode == "local" and local_tracks:
+                        sel_idx = (sel_idx + 1) % len(local_tracks)
+                        t_name, t_path = local_tracks[sel_idx]
+                        mpv.play_url(t_path, t_name, is_radio=False)
+                    elif mode == "radio":
+                        sel_idx = (sel_idx + 1) % len(RADIO_STATIONS)
+                        r_name, r_url, _ = RADIO_STATIONS[sel_idx]
+                        mpv.play_url(r_url, r_name, is_radio=True)
+                elif ch in (ord('p'), ord('P')):
+                    # Prev track
+                    if mode == "local" and local_tracks:
+                        sel_idx = (sel_idx - 1) % len(local_tracks)
+                        t_name, t_path = local_tracks[sel_idx]
+                        mpv.play_url(t_path, t_name, is_radio=False)
+                    elif mode == "radio":
+                        sel_idx = (sel_idx - 1) % len(RADIO_STATIONS)
+                        r_name, r_url, _ = RADIO_STATIONS[sel_idx]
+                        mpv.play_url(r_url, r_name, is_radio=True)
+            except KeyboardInterrupt:
+                break
+    finally:
+        mpv.cleanup()
+
+def main():
+    target = sys.argv[1] if len(sys.argv) > 1 else None
+
+    # Handle non-interactive execution
+    if not sys.stdin.isatty():
+        if target and os.path.exists(target):
+            subprocess.Popen(["mpv", "--no-video", target])
+            print(f"[+] Playing {target} in background")
+        else:
+            print("[*] Kortex Music requires an interactive terminal (e.g. kitty -e kortex-music).")
+        sys.exit(0)
+
+    try:
+        curses.wrapper(tui_music, target)
+    except KeyboardInterrupt:
+        pass
+    except Exception as e:
+        print(f"[-] Kortex Music error: {e}")
+
+if __name__ == "__main__":
+    main()
