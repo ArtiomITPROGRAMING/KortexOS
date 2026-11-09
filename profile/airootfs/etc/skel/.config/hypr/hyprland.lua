@@ -93,6 +93,10 @@ hl.config({
         force_default_wallpaper  = 0,
     },
 
+    debug = {
+        vfr = true,
+    },
+
     input = {
         kb_layout    = "us,ru",
         kb_options   = "grp:alt_shift_toggle",
@@ -127,19 +131,19 @@ hl.curve("easeInOutCubic", { type = "bezier", points = { {0.65, 0.05}, {0.36, 1}
 hl.curve("linear",         { type = "bezier", points = { {0, 0},       {1, 1}    } })
 hl.curve("almostLinear",   { type = "bezier", points = { {0.5, 0.5},   {0.75, 1} } })
 hl.curve("quick",          { type = "bezier", points = { {0.15, 0},    {0.1, 1}  } })
-hl.curve("easy",           { type = "spring", mass = 1, stiffness = 238.1191, damping = 24.21279333 })
+hl.curve("easy",           { type = "spring", mass = 1, stiffness = 320.0, damping = 28.0 })
 
 hl.animation({ leaf = "global",      enabled = true,  speed = 10,   bezier = "default" })
-hl.animation({ leaf = "border",      enabled = true,  speed = 5.39, bezier = "easeOutQuint" })
+hl.animation({ leaf = "border",      enabled = true,  speed = 4.2,  bezier = "easeOutQuint" })
 hl.animation({ leaf = "borderangle", enabled = false, speed = 28,   bezier = "linear", style = "loop" })
-hl.animation({ leaf = "windows",     enabled = true,  speed = 4.79, spring = "easy" })
-hl.animation({ leaf = "windowsIn",   enabled = true,  speed = 4.1,  spring = "easy",         style = "popin 87%" })
-hl.animation({ leaf = "windowsOut",  enabled = true,  speed = 1.49, bezier = "linear",       style = "popin 87%" })
-hl.animation({ leaf = "fadeIn",      enabled = true,  speed = 1.73, bezier = "almostLinear" })
-hl.animation({ leaf = "fadeOut",     enabled = true,  speed = 1.46, bezier = "almostLinear" })
-hl.animation({ leaf = "fade",        enabled = true,  speed = 3.03, bezier = "quick" })
-hl.animation({ leaf = "layers",      enabled = true,  speed = 3.81, bezier = "easeOutQuint" })
-hl.animation({ leaf = "workspaces",  enabled = true,  speed = 1.94, bezier = "almostLinear", style = "fade" })
+hl.animation({ leaf = "windows",     enabled = true,  speed = 5.5,  spring = "easy" })
+hl.animation({ leaf = "windowsIn",   enabled = true,  speed = 5.8,  spring = "easy",         style = "popin 90%" })
+hl.animation({ leaf = "windowsOut",  enabled = true,  speed = 3.2,  bezier = "quick",        style = "popin 90%" })
+hl.animation({ leaf = "fadeIn",      enabled = true,  speed = 3.0,  bezier = "almostLinear" })
+hl.animation({ leaf = "fadeOut",     enabled = true,  speed = 2.8,  bezier = "almostLinear" })
+hl.animation({ leaf = "fade",        enabled = true,  speed = 4.5,  bezier = "quick" })
+hl.animation({ leaf = "layers",      enabled = true,  speed = 4.5,  bezier = "easeOutQuint" })
+hl.animation({ leaf = "workspaces",  enabled = true,  speed = 3.5,  bezier = "almostLinear", style = "fade" })
 
 ----------------------
 ---- WINDOW RULES ----
@@ -167,6 +171,7 @@ hl.window_rule({ match = { class = "kortex-vault" },     float = true, move = "1
 hl.window_rule({ match = { class = "kortex-lock" },      fullscreen = true })
 
 -- Utilities
+hl.window_rule({ match = { class = "kortex-taskmgr" },       float = true, move = "15% 10%", size = "70% 80%" })
 hl.window_rule({ match = { class = "pavucontrol" },          float = true })
 hl.window_rule({ match = { class = "nm-connection-editor" }, float = true })
 hl.window_rule({ match = { class = "imv" },                  float = true })
@@ -197,14 +202,19 @@ end)
 
 local mainMod = "SUPER"
 
--- Core System & App Binds
+-- Core System & App Binds (Windows + Mac Hybrid Ergonomics)
 hl.bind(mainMod .. " + Q",      hl.dsp.window.close())
 hl.bind("ALT + F4",             hl.dsp.window.close())
+hl.bind("ALT + Tab",            hl.dsp.exec_cmd("pkill rofi || rofi -show window -p '⇄ ОКНА / ALT+TAB' -theme ~/.config/rofi/kortex-start.rasi"))
+hl.bind("CTRL + SHIFT + Escape",hl.dsp.exec_cmd("kitty --class kortex-taskmgr --title 'Task Manager (btop)' -e btop"))
+hl.bind("CTRL + ALT + Delete",  hl.dsp.exec_cmd("kitty --class kortex-taskmgr --title 'Task Manager (btop)' -e btop"))
 hl.bind(mainMod .. " + F",      hl.dsp.window.fullscreen({ action = "toggle" }))
 hl.bind(mainMod .. " + V",      hl.dsp.window.float({ action = "toggle" }))
 hl.bind(mainMod .. " + Return", hl.dsp.exec_cmd("/usr/local/bin/kortex-launch kitty"))
 hl.bind(mainMod .. " + Space",  hl.dsp.exec_cmd("pkill rofi || /usr/local/bin/kortex-spotlight"))
+hl.bind(mainMod .. " + R",      hl.dsp.exec_cmd("pkill rofi || /usr/local/bin/kortex-spotlight"))
 hl.bind(mainMod .. " + C",      hl.dsp.exec_cmd("pkill rofi || /usr/local/bin/kortex-control-center"))
+hl.bind(mainMod .. " + X",      hl.dsp.exec_cmd("pkill rofi || /usr/local/bin/kortex-control-center"))
 hl.bind(mainMod .. " + D",      hl.dsp.exec_cmd("pkill rofi || /usr/local/bin/kortex-menu"))
 hl.bind(mainMod .. " + Tab",    hl.dsp.exec_cmd("/usr/local/bin/kortex-layout next"))
 hl.bind(mainMod .. " + B",      hl.dsp.exec_cmd("/usr/local/bin/kortex-launch firefox || /usr/local/bin/kortex-launch chromium || kitty"))

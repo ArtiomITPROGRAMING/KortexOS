@@ -2,7 +2,7 @@
 """
 KortexOS Popup Alignment Engine
 Positions floating dialog windows (kortex-settings, kortex-ai, kortex-install)
-centered and precisely sized on screen.
+centered and precisely sized on screen using a single fast hyprctl --batch IPC call.
 """
 
 import subprocess
@@ -26,21 +26,21 @@ def main():
     target_cls = sys.argv[1] if len(sys.argv) > 1 else "kortex-settings"
     env = get_hypr_env()
 
-    # Wait up to 1.5s for window
-    for _ in range(30):
+    # Wait up to 1.0s for window to map
+    for _ in range(25):
         try:
-            out = subprocess.check_output(["hyprctl", "-j", "clients"], env=env, text=True)
+            out = subprocess.check_output(["hyprctl", "-j", "clients"], env=env, text=True, timeout=1)
             clients = json.loads(out)
             if any(c.get("class") == target_cls for c in clients):
                 break
         except Exception:
             pass
-        time.sleep(0.05)
+        time.sleep(0.03)
 
     # Monitor size
     mw, mh = 1920, 1080
     try:
-        mon_out = subprocess.check_output(["hyprctl", "-j", "monitors"], env=env, text=True)
+        mon_out = subprocess.check_output(["hyprctl", "-j", "monitors"], env=env, text=True, timeout=1)
         monitors = json.loads(mon_out)
         if monitors:
             mw = monitors[0].get("width", 1920)
@@ -48,16 +48,19 @@ def main():
     except Exception:
         pass
 
-    pw, ph = int(mw * 0.64), int(mh * 0.74)
+    pw, ph = int(mw * 0.68), int(mh * 0.78)
     px, py = (mw - pw) // 2, (mh - ph) // 2
 
-    subprocess.run(["hyprctl", "dispatch", f"hl.dsp.focus({{ window = 'class:{target_cls}' }})"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    time.sleep(0.04)
-    subprocess.run(["hyprctl", "dispatch", "hl.dsp.window.float()"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    time.sleep(0.04)
-    subprocess.run(["hyprctl", "dispatch", f"hl.dsp.window.resize({{ x = {pw}, y = {ph} }})"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    time.sleep(0.04)
-    subprocess.run(["hyprctl", "dispatch", f"hl.dsp.window.move({{ x = {px}, y = {py} }})"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    batch_cmd = (
+        f"dispatch focuswindow class:{target_cls} ; "
+        f"dispatch setfloating class:{target_cls} ; "
+        f"dispatch resizewindowpixel exact {pw} {ph},class:{target_cls} ; "
+        f"dispatch movewindowpixel exact {px} {py},class:{target_cls}"
+    )
+    try:
+        subprocess.run(["hyprctl", "--batch", batch_cmd], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2)
+    except Exception:
+        pass
 
 if __name__ == "__main__":
     main()

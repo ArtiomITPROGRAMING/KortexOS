@@ -1,0 +1,14 @@
+/**
+ * KORTEX-OS LIVE ROFI / SPOTLIGHT THEME
+ */
+* {
+    bg-base: rgba(10, 12, 16, 0.92);
+    bg-surface: rgba(18, 22, 31, 0.95);
+    accent-pri: #00f0ff;
+    accent-sec: #0088cc;
+    alert-crit: #ff003c;
+    text-main: #ffffff;
+    text-dim: #8b949e;
+    border-col: #00f0ff;
+    rounding: 8px;
+}

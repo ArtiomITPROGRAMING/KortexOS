@@ -31,41 +31,41 @@
     ],
 
     "custom/menu": {
-        "format": "[ KORTEX ]",
+        "format": "[ ⊞ ПУСК ]",
         "on-click": "/usr/local/bin/kortex-menu",
-        "tooltip": "Main Menu // Applications (Super+D)"
+        "tooltip": "Главное меню Пуск // Приложения и Система (Super+D)"
     },
     "custom/layout": {
         "exec": "/usr/local/bin/kortex-layout waybar",
         "return-type": "json",
         "interval": 2,
         "on-click": "/usr/local/bin/kortex-layout next",
-        "tooltip": "Switch Desktop Mode: Cyber-Deck / MacBook Pro / Pure Tiling (Super+Tab)"
+        "tooltip": "Переключить режим стола: Mac+Windows Док / Cyber-Deck / Тайлинг (Super+Tab)"
     },
     "custom/win-min": {
         "format": "[ _ ]",
-        "on-click": "hyprctl eval 'hl.dispatch(hl.dsp.window.float({ action = \"toggle\" }))' || hyprctl dispatch togglefloating",
-        "tooltip": "Minimize / Toggle Floating Active Window"
+        "on-click": "hyprctl dispatch togglefloating",
+        "tooltip": "Плавающее / Тайлинговое окно (Super+V)"
     },
     "custom/win-max": {
         "format": "[ □ ]",
-        "on-click": "hyprctl eval 'hl.dispatch(hl.dsp.window.fullscreen({ action = \"toggle\" }))' || hyprctl dispatch fullscreen 1",
-        "tooltip": "Maximize / Fullscreen Active Window (Super+F)"
+        "on-click": "hyprctl dispatch fullscreen 1",
+        "tooltip": "Развернуть на весь экран (Super+F)"
     },
     "custom/win-close": {
         "format": "[ ✕ ]",
-        "on-click": "hyprctl eval 'hl.dispatch(hl.dsp.window.close())' || hyprctl dispatch killactive",
-        "tooltip": "Close Active Window (Super+Q / Alt+F4)"
+        "on-click": "hyprctl dispatch killactive",
+        "tooltip": "Закрыть активное окно (Super+Q / Alt+F4)"
     },
     "custom/spotlight": {
         "format": "[ ⌕ SPOTLIGHT ]",
         "on-click": "/usr/local/bin/kortex-spotlight",
-        "tooltip": "Kortex Spotlight Search, Calculator & Quick Commands (Super+Space)"
+        "tooltip": "Поиск программ, файлов и калькулятор Spotlight (Super+Space)"
     },
     "custom/control-center": {
         "format": "[ 🎛 CTRL ]",
         "on-click": "/usr/local/bin/kortex-control-center",
-        "tooltip": "MacBook Control Center: Volume, Brightness, Wi-Fi, Bluetooth, DND"
+        "tooltip": "Центр управления: Громкость, Яркость, Wi-Fi, Bluetooth, DND (Super+C)"
     },
     "custom/guide": {
         "format": "[ ? GUIDE ]",

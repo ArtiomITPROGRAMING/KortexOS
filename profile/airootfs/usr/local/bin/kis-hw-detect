@@ -92,5 +92,20 @@ context.properties = {
 }
 EOF
 
+# 5. Linux-Zen Desktop Responsiveness & BBR Network Tuning
+mkdir -p /etc/sysctl.d
+cat > /etc/sysctl.d/99-kortex-zen.conf << 'EOF'
+vm.swappiness = 100
+vm.vfs_cache_pressure = 50
+vm.dirty_background_ratio = 5
+vm.dirty_ratio = 10
+vm.page-cluster = 0
+kernel.sched_autogroup_enabled = 1
+kernel.nmi_watchdog = 0
+net.core.default_qdisc = fq
+net.ipv4.tcp_congestion_control = bbr
+EOF
+sysctl --system >/dev/null 2>&1 || true
+
 echo "[KIS] Hardware tuning complete."
 exit 0

@@ -88,31 +88,27 @@ if widget_enabled "terminal"; then
     else
         kitty --class kortex-term --title "MAIN" &
     fi
-    sleep 0.15
 fi
 
 # 2. System Telemetry Pulse (Left)
 if widget_enabled "sys_panel"; then
     kitty --class kortex-pulse -e /usr/local/bin/kortex-sys-panel &
-    sleep 0.15
 fi
 
 # 3. 3D Globe & Network Telemetry (Right-Top)
 if widget_enabled "globe_net"; then
     kitty --class kortex-net -e /usr/local/bin/kortex-net-monitor &
-    sleep 0.15
 fi
 
 # 4. File Grid Explorer (Center-Bottom)
 if widget_enabled "file_grid"; then
     kitty --class kortex-files -e /usr/local/bin/kortex-file-grid &
-    sleep 0.15
 fi
 
 # 5. Interactive QWERTY Keyboard (Right-Bottom)
 if widget_enabled "virtual_keyboard"; then
     kitty --class kortex-kb -e /usr/local/bin/kortex-keyboard &
-    sleep 0.2
 fi
 
+sleep 0.1
 /usr/local/bin/kortex-grid-align &

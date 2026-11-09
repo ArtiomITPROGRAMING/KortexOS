@@ -59,27 +59,26 @@ if command -v rofi >/dev/null 2>&1; then
         text-color: #000000;
         font: \"JetBrainsMono Nerd Font Bold 11\";
     }
-    " -dmenu -i -p "┌─[ KORTEX HOTKEYS CHEATSHEET // Super+F1 ]" << 'EOF'
-[ Super + Tab ]            Switch Desktop Mode (Grid / Tiling / Floating)
-[ Super + Return ]         Launch Cyber Terminal (Kitty)
-[ Super + D / Tap Super ]  Open Kortex Start Menu
-[ Super + Q / Alt + F4 ]   Close Active Window
-[ Super + Space ]          Toggle Floating / Tiling for Active Window
-[ Super + F ]              Toggle Fullscreen Mode
-[ Super + S ]              Kortex Control Panel & Theme Studio
-[ Super + A ]              Kortex AI Cyber Assistant
-[ Super + P ]              Kortex App Store & Software Hub
-[ Super + E ]              Kortex File Grid Explorer (Yazi)
-[ Super + B ]              Launch Web Browser
-[ Super + L ]              Lock Station Gate (Kortex Lock)
-[ Super + N ]              Network Sentinel & Panic Lockdown
-[ Super + V ]              Kortex Snapshots & Crypto Vault
-[ Super + Shift + S ]      Interactive Screenshot to Clipboard (Slurp)
-[ Print ]                  Full Desktop Screenshot
-[ Super + Shift + R ]      Reload Hyprland & Waybar Configuration
-[ Super + Shift + G ]      Re-align & Spawn 5-Module Cyber-Deck Grid
-[ Super + 1 .. 5 ]         Switch to Workspaces 1-5 (Grid/Apps/Dev/Media/Sys)
-[ Esc / Enter ]            Dismiss this Cheatsheet HUD
+    " -dmenu -i -p "┌─[ KORTEX HOTKEYS // ГОРЯЧИЕ КЛАВИШИ (Super+F1) ]" << 'EOF'
+[ Super + Space / Win+R ]  Spotlight: Поиск программ, файлов и калькулятор
+[ Super + D ]              Меню Пуск (Windows / Mac Launchpad)
+[ Alt + Tab ]              Переключение между открытыми окнами
+[ Super + Tab ]            Смена режима стола (Mac+Win Док / Кибер-Сетка / Тайлинг)
+[ Super + Q / Alt + F4 ]   Закрыть активное окно (или кнопка [ ✕ ] сверху)
+[ Ctrl + Shift + Esc ]     Диспетчер задач (Task Manager / btop)
+[ Super + C / Win + X ]    Центр Управления (Звук, Яркость, Wi-Fi, Bluetooth)
+[ Super + Return ]         Открыть Терминал (Kitty)
+[ Super + B ]              Запустить Браузер (Firefox)
+[ Super + E ]              Проводник файлов (Yazi)
+[ Super + S ]              Настройки, Темы, Стекло и Обои (Theme Studio Pro)
+[ Super + P ]              Магазин программ (Kortex App Hub)
+[ Super + A ]              ИИ-Ассистент (Kortex AI)
+[ Super + V ]              Сделать окно плавающим / тайлинговым (или [ _ ] сверху)
+[ Super + F ]              Развернуть окно на весь экран (или [ □ ] сверху)
+[ Super + L ]              Заблокировать экран (Kortex Lock)
+[ Super + Shift + S ]      Скриншот выделенной области в буфер обмена
+[ Super + 1 .. 5 ]         Переключение рабочих столов 1–5 (или свайп 3 пальцами)
+[ Esc / Enter ]            Закрыть эту подсказку
 EOF
 else
     # Fallback TUI HUD in kitty

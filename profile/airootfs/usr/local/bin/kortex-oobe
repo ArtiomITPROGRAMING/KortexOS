@@ -253,12 +253,12 @@ def step_2_network_and_audio(st):
 
 def step_3_desktop_mode(st):
     phil_opts = [
-        ("Cyber-Deck (5-Panel eDEX Grid)", "Hacker station: 5 synchronized modules (Telemetry, Terminal, 3D Globe, File Grid, QWERTY Deck)"),
-        ("MacBook Pro Mode (Glass & Dock)", "Floating windows with Kawase glass blur, top status bar, bottom Dock & [ _ ] [ □ ] [ ✕ ] buttons"),
-        ("Pro Developer (Pure Tiling)", "Clean full-screen dwindle tiling without overlays or virtual keyboard")
+        ("MacBook Pro + Windows Mode (Glass & Dock)", "Простой и понятный: плавающие окна со стеклом (blur), верхний бар, нижний Док и кнопки [ _ ] [ □ ] [ ✕ ]"),
+        ("Cyber-Deck (5-Panel eDEX Grid)", "Хакерская станция: 5 живых панелей (Телеметрия, Терминал, 3D-Глобус, Проводник, Клавиатура)"),
+        ("Pro Developer (Pure Tiling)", "Чистый тайлинг окон на весь экран для кодинга без лишних панелей")
     ]
     c_phil = interactive_select(3, "DESKTOP MODE ARCHITECTURE", "Choose Primary Desktop UX Mode (Switch anytime via Super + Tab):", phil_opts)
-    phils = ["cyberdeck", "macbook", "tiling"]
+    phils = ["macbook", "cyberdeck", "tiling"]
     st["interface"]["philosophy"] = phils[c_phil]
     st["interface"]["dock_enabled"] = (phils[c_phil] == "macbook")
 

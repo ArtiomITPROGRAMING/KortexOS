@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # KortexOS Smart Application Launcher & Workspace Router (kortex-launch)
-# Routes user applications to Workspace 2 (2:APPS) to preserve Workspace 1 Grid
+# Routes user applications to Workspace 2 ONLY when Cyber-Deck 5-Panel Grid is active
+# on Workspace 1; otherwise opens directly on the current workspace (Windows/Mac UX).
 # ==============================================================================
 
 set -eu
@@ -23,16 +24,14 @@ ensure_hyprland_sig() {
 
 ensure_hyprland_sig
 
-# Check current active workspace
-cur_ws=""
-if command -v hyprctl >/dev/null 2>&1 && [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
-    cur_ws=$(hyprctl activeworkspace -j 2>/dev/null | grep -o '"id": *[0-9]*' | head -n 1 | awk '{print $2}' || true)
-fi
-
-# If on Workspace 1 (Grid Dashboard), route ordinary apps to Workspace 2
-if [ "$cur_ws" = "1" ] || [ -z "$cur_ws" ]; then
+# Only switch away from Workspace 1 if the 5-panel Cyber-Deck Grid is actively running on it
+if pgrep -f "kitty --class kortex-pulse" >/dev/null 2>&1; then
+    cur_ws=""
     if command -v hyprctl >/dev/null 2>&1 && [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
-        hyprctl dispatch 'hl.dsp.focus({ workspace = 2 })' >/dev/null 2>&1 || hyprctl dispatch workspace 2 >/dev/null 2>&1 || true
+        cur_ws=$(hyprctl activeworkspace -j 2>/dev/null | grep -o '"id": *[0-9]*' | head -n 1 | awk '{print $2}' || true)
+    fi
+    if [ "$cur_ws" = "1" ]; then
+        hyprctl dispatch workspace 2 >/dev/null 2>&1 || true
     fi
 fi
 
