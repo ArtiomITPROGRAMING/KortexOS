@@ -1,20 +1,27 @@
 #!/usr/bin/env python3
 """
-KORTEX-OOBE: Fullscreen Initial Setup Wizard & Hardware Profiler
+KORTEX-OOBE: Fullscreen Interactive Initial Setup Wizard & Hardware Profiler
 Runs on first boot when ~/.config/kortex/.setup_done does not exist.
-Integrates MacBook UX + Cyberpunk Philosophy with persistent disk transfer.
+Supports both Mouse Clicks and Keyboard navigation (Arrows / Enter / 1-9).
+Covers:
+1. Localization (EN / RU / RO / DE), Keyboard Layout (us,ru / us,ro / de) & Hotkey (Alt+Shift / Super+Space)
+2. Network (nmcli Wi-Fi / nmtui) & PipeWire Audio Verification
+3. Desktop Mode (Cyber-Deck 5-Panel Grid / MacBook Pro Mode [Glass & Dock] / Pro Developer Pure Tiling)
+4. Quick Theme, Border Engine, Audio FX & Hardware Power Profile (Eco / Balanced / Overdrive)
+5. Install to Disk with Persistence (master-state.json) or Continue in Live Mode (.setup_done)
 """
 
 import sys
 import os
 import json
 import time
+import curses
 import subprocess
 import shutil
 
 SETUP_FLAG = os.path.expanduser("~/.config/kortex/.setup_done")
 MASTER_STATE = os.path.expanduser("~/.config/kortex/master-state.json")
-BACKUP_DIR = os.path.expanduser("~/.config/kortex/profiles")
+LEGACY_STATE = os.path.expanduser("~/.config/kortex/config.json")
 
 def get_hypr_env():
     env = os.environ.copy()
@@ -28,272 +35,317 @@ def get_hypr_env():
                 env["HYPRLAND_INSTANCE_SIGNATURE"] = sigs[0]
     return env
 
-def clear_screen():
-    print("\033[2J\033[H", end="", flush=True)
+def interactive_select(step_num, step_title, subtitle, options):
+    """
+    Fullscreen Curses interactive menu supporting Mouse Clicks, Arrow Keys, Enter, and Number Keys 1-9.
+    Falls back to standard CLI input if curses fails.
+    """
+    def _curses_menu(stdscr):
+        curses.curs_set(0)
+        stdscr.nodelay(False)
+        stdscr.keypad(True)
+        try:
+            curses.mousemask(curses.ALL_MOUSE_EVENTS | curses.REPORT_MOUSE_POSITION)
+        except Exception:
+            pass
 
-def print_banner(step_num, step_name):
-    clear_screen()
-    cyan = "\033[1;36m"
-    white = "\033[1;37m"
-    gray = "\033[0;90m"
-    dim = "\033[2m"
-    rst = "\033[0m"
+        curses.start_color()
+        curses.use_default_colors()
+        curses.init_pair(1, curses.COLOR_WHITE, -1)
+        curses.init_pair(2, curses.COLOR_BLACK, curses.COLOR_CYAN)
+        curses.init_pair(3, curses.COLOR_CYAN, -1)
+        curses.init_pair(4, curses.COLOR_GREEN, -1)
+        curses.init_pair(5, curses.COLOR_YELLOW, -1)
 
-    print(f"{cyan}╔══════════════════════════════════════════════════════════════════════════════╗{rst}")
-    print(f"{cyan}║{white}      KORTEX-OS UNIFIED DESIGN & INITIAL SETUP WIZARD (OOBE)                 {cyan}║{rst}")
-    print(f"{cyan}║{dim}      MacBook UX on Arch Linux + Cyber-Deck Architecture                      {cyan}║{rst}")
-    print(f"{cyan}╠══════════════════════════════════════════════════════════════════════════════╣{rst}")
-    print(f"{cyan}║{white}  STEP {step_num}/5 : {step_name.ljust(60)} {cyan}║{rst}")
-    print(f"{cyan}╚══════════════════════════════════════════════════════════════════════════════╝{rst}\n")
+        sel = 0
+        row_map = {}
 
-def menu_select(options, prompt="Choose an option:"):
-    cyan = "\033[1;36m"
-    yellow = "\033[1;33m"
-    rst = "\033[0m"
+        while True:
+            stdscr.erase()
+            h, w = stdscr.getmaxyx()
 
-    print(f"{yellow}{prompt}{rst}\n")
+            # Header Box
+            top_bar = "╔" + "═" * max(10, min(78, w - 4)) + "╗"
+            mid_bar = "╠" + "═" * max(10, min(78, w - 4)) + "╣"
+            bot_bar = "╚" + "═" * max(10, min(78, w - 4)) + "╝"
+
+            def add_line(y, x, text, attr=curses.A_NORMAL):
+                if 0 <= y < h and 0 <= x < w:
+                    try:
+                        stdscr.addstr(y, x, text[:max(1, w - x - 1)], attr)
+                    except curses.error:
+                        pass
+
+            add_line(1, 2, top_bar, curses.color_pair(3) | curses.A_BOLD)
+            add_line(2, 4, "KORTEX-OS UNIFIED DESIGN & INITIAL SETUP WIZARD (OOBE)", curses.color_pair(1) | curses.A_BOLD)
+            add_line(3, 4, "MacBook UX on Arch Linux + Cyber-Deck Architecture (Mouse & Keyboard Ready)", curses.color_pair(3))
+            add_line(4, 2, mid_bar, curses.color_pair(3) | curses.A_BOLD)
+            add_line(5, 4, f"STEP {step_num}/5 :: {step_title}", curses.color_pair(5) | curses.A_BOLD)
+            add_line(6, 2, bot_bar, curses.color_pair(3) | curses.A_BOLD)
+
+            add_line(8, 4, subtitle, curses.color_pair(4) | curses.A_BOLD)
+
+            row_map.clear()
+            y_cur = 10
+            for idx, (label, desc) in enumerate(options):
+                is_sel = (idx == sel)
+                prefix = " ▶ " if is_sel else "   "
+                attr = curses.color_pair(2) | curses.A_BOLD if is_sel else curses.color_pair(1) | curses.A_BOLD
+                line_str = f"{prefix}[{idx + 1}] {label:<52}"
+                add_line(y_cur, 4, line_str, attr)
+                row_map[y_cur] = idx
+                if desc:
+                    add_line(y_cur + 1, 11, desc, curses.color_pair(3) if is_sel else curses.color_pair(1))
+                    row_map[y_cur + 1] = idx
+                    y_cur += 3
+                else:
+                    y_cur += 2
+
+            add_line(h - 2, 4, "Controls: [↑/↓] Navigate  |  [ENTER / Mouse Click] Confirm  |  [1-9] Quick Pick", curses.color_pair(5))
+            stdscr.refresh()
+
+            ch = stdscr.getch()
+            if ch == curses.KEY_UP:
+                sel = (sel - 1) % len(options)
+            elif ch == curses.KEY_DOWN:
+                sel = (sel + 1) % len(options)
+            elif ch in (10, 13, curses.KEY_ENTER, ord(' ')):
+                return sel
+            elif ord('1') <= ch <= ord('9'):
+                pick = ch - ord('1')
+                if pick < len(options):
+                    return pick
+            elif ch == curses.KEY_MOUSE:
+                try:
+                    _, mx, my, _, bstate = curses.getmouse()
+                    if my in row_map:
+                         clicked_idx = row_map[my]
+                         if bstate & (curses.BUTTON1_CLICKED | curses.BUTTON1_PRESSED | curses.BUTTON1_DOUBLE_CLICKED):
+                             return clicked_idx
+                         sel = clicked_idx
+                except Exception:
+                    pass
+
+    try:
+        if sys.stdin.isatty() and sys.stdout.isatty():
+            return curses.wrapper(_curses_menu)
+    except Exception:
+        pass
+
+    # Fallback CLI menu
+    print(f"\n=== STEP {step_num}/5 : {step_title} ===")
+    print(f"{subtitle}\n")
     for idx, (label, desc) in enumerate(options, 1):
-        print(f"  {cyan}[{idx}]{rst} \033[1m{label}\033[0m")
+        print(f"  [{idx}] {label}")
         if desc:
-            print(f"      \033[0;90m{desc}\033[0m")
-    print()
-
+            print(f"      {desc}")
     while True:
         try:
-            choice = input(f"Enter choice [1-{len(options)}] (Default: 1): ").strip()
-            if not choice:
+            c = input(f"\nSelect [1-{len(options)}] (Default 1): ").strip()
+            if not c:
                 return 0
-            val = int(choice) - 1
-            if 0 <= val < len(options):
-                return val
-            print("Invalid choice, please re-enter.")
-        except (ValueError, KeyboardInterrupt, EOFError):
+            v = int(c) - 1
+            if 0 <= v < len(options):
+                return v
+        except (ValueError, EOFError, KeyboardInterrupt):
             return 0
 
-def step_locale_and_keyboard(st):
-    print_banner(1, "LANGUAGE, TIMEZONE & KEYBOARD")
-    
-    # 1. Language
+def step_1_localization(st):
     lang_opts = [
-        ("English (US)", "Default global interface language"),
-        ("Русский (RU)", "Полный перевод интерфейса и системных утилит"),
-        ("Română (RO)", "Limba română pentru sistem și utilitare"),
-        ("Deutsch (DE)", "Deutsche Systemsprache")
+        ("English (EN)", "Default global system & developer interface language"),
+        ("Русский (RU)", "Полная локализация интерфейса, меню и системных утилит"),
+        ("Română (RO)", "Limba română pentru interfață și utilitare de sistem"),
+        ("Deutsch (DE)", "Deutsche Systemsprache und Entwickler-Oberfläche")
     ]
-    c_lang = menu_select(lang_opts, "Select System Language:")
+    c_lang = interactive_select(1, "LOCALIZATION & KEYBOARD", "1/3: Select System Interface Language (EN / RU / RO / DE):", lang_opts)
     langs = ["en", "ru", "ro", "de"]
-    chosen_lang = langs[c_lang]
-    st["system"]["language"] = chosen_lang
+    st["system"]["language"] = langs[c_lang]
 
-    # 2. Timezone
-    tz_opts = [
-        ("Europe/Chisinau", "Moldova Local Time (EET / EEST)"),
-        ("Europe/Bucharest", "Romania Local Time (EET / EEST)"),
-        ("UTC", "Universal Coordinated Time"),
-        ("America/New_York", "Eastern Time (US)")
-    ]
-    c_tz = menu_select(tz_opts, "Select System Timezone:")
-    tzs = ["Europe/Chisinau", "Europe/Bucharest", "UTC", "America/New_York"]
-    chosen_tz = tzs[c_tz]
-    st["system"]["timezone"] = chosen_tz
-    try:
-        subprocess.run(["timedatectl", "set-timezone", chosen_tz], stderr=subprocess.DEVNULL)
-    except Exception:
-        pass
-
-    # 3. Keyboard Layout & Toggle
     kb_opts = [
-        ("US + Russian (Alt+Shift toggle)", "Standard EN/RU bilingual developer layout"),
-        ("US + Romanian (Alt+Shift toggle)", "Standard EN/RO layout with diacritics"),
-        ("US + German (Alt+Shift toggle)", "Standard EN/DE layout"),
-        ("US Only (English)", "Clean single layout for strict developers")
+        ("US + Russian (us,ru)", "Bilingual English & Russian layout"),
+        ("US + Romanian (us,ro)", "Bilingual English & Romanian standard layout"),
+        ("German (de)", "German QWERTZ keyboard layout (us,de)"),
+        ("US English Only (us)", "Single clean US QWERTY developer layout")
     ]
-    c_kb = menu_select(kb_opts, "Select Keyboard Layout & Switch Hotkey:")
-    kbs = [
-        ("us,ru", "grp:alt_shift_toggle"),
-        ("us,ro", "grp:alt_shift_toggle"),
-        ("us,de", "grp:alt_shift_toggle"),
-        ("us", "")
-    ]
-    st["system"]["kb_layout"] = kbs[c_kb][0]
-    st["system"]["kb_toggle"] = kbs[c_kb][1]
+    c_kb = interactive_select(1, "LOCALIZATION & KEYBOARD", "2/3: Select Keyboard Layout (us,ru / us,ro / de):", kb_opts)
+    kb_layouts = ["us,ru", "us,ro", "de", "us"]
+    st["system"]["kb_layout"] = kb_layouts[c_kb]
 
-    # Live apply keyboard layout in Hyprland
+    hk_opts = [
+        ("Alt + Shift (grp:alt_shift_toggle)", "Classic desktop keyboard language switch shortcut"),
+        ("Super + Space / Win + Space (grp:win_space_toggle)", "MacBook / modern OS language switch shortcut")
+    ]
+    c_hk = interactive_select(1, "LOCALIZATION & KEYBOARD", "3/3: Select Keyboard Layout Switch Hotkey:", hk_opts)
+    hk_vals = ["grp:alt_shift_toggle", "grp:win_space_toggle"]
+    st["system"]["kb_toggle"] = hk_vals[c_hk]
+
     env = get_hypr_env()
     try:
-        subprocess.run(["hyprctl", "keyword", "input:kb_layout", kbs[c_kb][0]], env=env, stderr=subprocess.DEVNULL)
-        if kbs[c_kb][1]:
-            subprocess.run(["hyprctl", "keyword", "input:kb_options", kbs[c_kb][1]], env=env, stderr=subprocess.DEVNULL)
+        subprocess.run(
+            ["hyprctl", "eval", f'hl.config({{ input = {{ kb_layout = "{kb_layouts[c_kb]}", kb_options = "{hk_vals[c_hk]}" }} }})'],
+            env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2
+        )
     except Exception:
         pass
 
-def step_network_and_bluetooth(st):
-    print_banner(2, "NETWORK & WIRELESS CONNECTIVITY")
-    
-    net_opts = [
-        ("Quick Wi-Fi Connect (Scan nearby SSIDs)", "Scan and connect to local wireless network"),
-        ("Interactive Network Manager (nmtui)", "Full terminal network control center"),
-        ("Skip Network Setup", "Already connected via Ethernet or skip for now")
-    ]
-    c_net = menu_select(net_opts, "Wireless & Internet Configuration:")
-    
-    if c_net == 0:
-        print("\n\033[1;36m[*] Scanning for Wi-Fi networks...\033[0m")
-        try:
-            res = subprocess.run(["nmcli", "-t", "-f", "SSID,SIGNAL,SECURITY", "device", "wifi", "list"], capture_output=True, text=True, timeout=5)
-            lines = [l.strip() for l in res.stdout.splitlines() if l.strip()]
-            if lines:
-                wifi_opts = []
-                for l in lines[:8]:
-                    parts = l.split(":")
-                    ssid = parts[0] or "<Hidden>"
-                    sig = parts[1] if len(parts) > 1 else ""
-                    sec = parts[2] if len(parts) > 2 else ""
-                    wifi_opts.append((f"{ssid} ({sig}% signal)", f"Security: {sec}"))
-                wifi_opts.append(("Skip Wi-Fi", "Do not connect now"))
-                
-                c_wifi = menu_select(wifi_opts, "Select Wi-Fi Network:")
-                if c_wifi < len(wifi_opts) - 1:
-                    target_ssid = lines[c_wifi].split(":")[0]
-                    pwd = input(f"Enter password for '{target_ssid}' (or empty if open): ").strip()
-                    if pwd:
-                        subprocess.run(["nmcli", "device", "wifi", "connect", target_ssid, "password", pwd])
-                    else:
-                        subprocess.run(["nmcli", "device", "wifi", "connect", target_ssid])
-            else:
-                print("No Wi-Fi networks found or Wi-Fi adapter not active. Skipping.")
-                time.sleep(1)
-        except Exception as e:
-            print(f"Network scan skipped: {e}")
-            time.sleep(1)
-    elif c_net == 1:
-        subprocess.run(["nmtui"])
+def test_pipewire_audio():
+    print("\033[2J\033[H\033[1;36m[*] PipeWire Low-Latency Audio Subsystem Check...\033[0m\n")
+    try:
+        subprocess.run(["wpctl", "status"], timeout=3)
+    except Exception:
+        pass
+    print("\n\033[1;32m[*] Playing stereo verification chime...\033[0m")
+    try:
+        subprocess.run(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "0"], stderr=subprocess.DEVNULL, timeout=2)
+        subprocess.run(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "0.75"], stderr=subprocess.DEVNULL, timeout=2)
+        subprocess.run("speaker-test -t sine -f 660 -l 1 >/dev/null 2>&1 || true", shell=True, timeout=4)
+    except Exception:
+        pass
+    time.sleep(1)
 
-def step_interface_philosophy(st):
-    print_banner(3, "INTERFACE PHILOSOPHY & WORKSPACE LAYOUT")
-    
+def step_2_network_and_audio(st):
+    while True:
+        net_opts = [
+            ("Scan & Connect Wi-Fi (nmcli)", "Scan wireless SSIDs and connect with passphrase"),
+            ("Open Full Network Manager TUI (nmtui)", "Interactive Wi-Fi & Ethernet configuration utility"),
+            ("Test Audio Output (PipeWire / WirePlumber)", "Verify PipeWire sound server & play test tone"),
+            ("Continue to Desktop Mode ->", "Proceed to Step 3 (Desktop Mode Selection)")
+        ]
+        c_net = interactive_select(2, "NETWORK & PIPEWIRE AUDIO", "Configure Wireless Network (nmcli) & Verify Audio Output (PipeWire):", net_opts)
+        if c_net == 0:
+            print("\033[2J\033[H\033[1;36m[*] Scanning for nearby Wi-Fi networks via nmcli...\033[0m\n")
+            try:
+                res = subprocess.run(["nmcli", "-t", "-f", "SSID,SIGNAL,SECURITY", "device", "wifi", "list"], capture_output=True, text=True, timeout=6)
+                lines = [l.strip() for l in res.stdout.splitlines() if l.strip()]
+                if lines:
+                    wifi_opts = []
+                    ssids = []
+                    for l in lines[:8]:
+                        parts = l.split(":")
+                        ssid = parts[0] or "<Hidden>"
+                        sig = parts[1] if len(parts) > 1 else ""
+                        sec = parts[2] if len(parts) > 2 else "Open"
+                        wifi_opts.append((f"{ssid} ({sig}%)", f"Security: {sec}"))
+                        ssids.append(parts[0])
+                    wifi_opts.append(("Back", "Return to Network & Audio menu"))
+                    pick = interactive_select(2, "WI-FI NETWORKS (nmcli)", "Select Wi-Fi SSID to connect:", wifi_opts)
+                    if pick < len(ssids) and ssids[pick]:
+                        target_ssid = ssids[pick]
+                        print(f"\033[2J\033[HConnecting to SSID: {target_ssid}")
+                        pwd = input(f"Enter Wi-Fi password for '{target_ssid}' (leave blank if open): ").strip()
+                        if pwd:
+                            subprocess.run(["nmcli", "device", "wifi", "connect", target_ssid, "password", pwd])
+                        else:
+                            subprocess.run(["nmcli", "device", "wifi", "connect", target_ssid])
+                        time.sleep(1.5)
+                else:
+                    print("No Wi-Fi SSIDs detected or wireless interface unavailable.")
+                    time.sleep(1.5)
+            except Exception as e:
+                print(f"Wi-Fi scan notice: {e}")
+                time.sleep(1.5)
+        elif c_net == 1:
+            subprocess.run(["nmtui"])
+        elif c_net == 2:
+            test_pipewire_audio()
+        else:
+            break
+
+def step_3_desktop_mode(st):
     phil_opts = [
-        ("Cyber-Deck (eDEX 5-Panel Grid)", "Hacker command center: CPU pulse, network globe, terminal, file grid & virtual deck"),
-        ("MacBook Pro Mode (Glass & Dock)", "macOS style: Frosted glass blur, floating windows with [ _ ][ □ ][ ✕ ] buttons & gestures"),
-        ("Pure Tiling (Dev Mode)", "Strict full-screen dwindle tiling without distraction panels or on-screen keyboard")
+        ("Cyber-Deck (5-Panel eDEX Grid)", "Hacker station: 5 synchronized modules (Telemetry, Terminal, 3D Globe, File Grid, QWERTY Deck)"),
+        ("MacBook Pro Mode (Glass & Dock)", "Floating windows with Kawase glass blur, top status bar, bottom Dock & [ _ ] [ □ ] [ ✕ ] buttons"),
+        ("Pro Developer (Pure Tiling)", "Clean full-screen dwindle tiling without overlays or virtual keyboard")
     ]
-    c_phil = menu_select(phil_opts, "Select Primary Desktop Experience:")
+    c_phil = interactive_select(3, "DESKTOP MODE ARCHITECTURE", "Choose Primary Desktop UX Mode (Switch anytime via Super + Tab):", phil_opts)
     phils = ["cyberdeck", "macbook", "tiling"]
     st["interface"]["philosophy"] = phils[c_phil]
+    st["interface"]["dock_enabled"] = (phils[c_phil] == "macbook")
 
-    # Live apply layout
-    if phils[c_phil] == "cyberdeck":
-        subprocess.run(["/usr/local/bin/kortex-layout", "grid"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    elif phils[c_phil] == "macbook":
-        subprocess.run(["/usr/local/bin/kortex-layout", "floating"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    else:
-        subprocess.run(["/usr/local/bin/kortex-layout", "tiling"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-def step_visual_style(st):
-    print_banner(4, "THEME, GLASSMORPHISM & WALLPAPER")
-
-    # 1. Color Palette Preset
+def step_4_theme_and_hardware(st):
     theme_opts = [
-        ("Cyber Cyan (Tron Electric Blue)", "Hex: #00f0ff - Crisp electric futuristic glow"),
-        ("Tokyo Night (Twilight Violet)", "Hex: #7aa2f7 - Deep indigo and neon lavender aesthetic"),
-        ("Dracula Dark (Gothic Violet)", "Hex: #bd93f9 - High contrast purple and pink dark mode"),
-        ("Matrix Phosphor (Terminal Green)", "Hex: #00ff41 - Classic hacker green monochrome"),
-        ("Amber CRT (Vintage 80s Display)", "Hex: #ffb000 - Warm monochrome phosphor amber"),
-        ("Mono Tron (Pure Stealth White)", "Hex: #ffffff - Minimalist high contrast monochrome"),
-        ("Crimson Alert (Red Alert Combat)", "Hex: #ff003c - Aggressive military combat HUD")
+        ("Cyber Cyan (#00f0ff)", "Electric Tron neon blue glow & dark slate glass"),
+        ("Tokyo Night (#7aa2f7)", "Deep twilight indigo with lavender neon accents"),
+        ("Dracula Dark (#bd93f9)", "High-contrast gothic violet & neon pink"),
+        ("Matrix Phosphor (#00ff41)", "Classic hacker green phosphor monochrome"),
+        ("Amber CRT (#ffb000)", "Warm retro 80s phosphor amber terminal"),
+        ("Mono Tron (#ffffff)", "Pure high-contrast stealth monochrome"),
+        ("Crimson Alert (#ff003c)", "Tactical red alert cyber combat HUD")
     ]
-    c_th = menu_select(theme_opts, "Select Core Color Palette:")
+    c_th = interactive_select(4, "QUICK THEME & HARDWARE PROFILE", "1/4: Select Base Color Palette:", theme_opts)
     themes = ["cyan", "tokyonight", "dracula", "matrix", "amber", "mono", "crimson"]
     chosen_theme = themes[c_th]
+    st["theme"]["name"] = chosen_theme
 
-    # 2. Border Mode
     border_opts = [
-        ("Dual Gradient (Cyber Edge)", "Two-color border with 45-degree angle transitions"),
-        ("Solid Color", "Clean uniform solid accent border"),
-        ("Animated Neon Loop", "Rotating continuous neon flow along window edges"),
-        ("Glow Shadow (Neon Bloom)", "Diffused neon drop-shadow behind active windows")
+        ("Dual Gradient (45° Cyber Edge)", "Two-tone gradient border around active windows"),
+        ("Animated Neon Loop", "Continuous rotating neon gradient around active window perimeter"),
+        ("Drop Shadow / Glow", "Diffused neon glow aura around active windows"),
+        ("Solid Border", "Clean single-color crisp window border")
     ]
-    c_border = menu_select(border_opts, "Select Window Border Style:")
-    b_modes = ["dual_gradient", "solid", "neon_loop", "glow_shadow"]
-    st["theme"]["borders"]["mode"] = b_modes[c_border]
+    c_bd = interactive_select(4, "QUICK THEME & HARDWARE PROFILE", "2/4: Select Active Window Border Engine Style:", border_opts)
+    b_modes = ["dual_gradient", "neon_loop", "glow_shadow", "solid"]
+    st["theme"]["borders"]["mode"] = b_modes[c_bd]
 
-    # 3. Wallpaper
-    wall_opts = [
-        ("Cyber Grid (Vector Tech Canvas)", "Crisp high-resolution digital blueprint grid"),
-        ("Cyber Glass (MacBook Multi-Mesh)", "Deep blue and violet radial glow for glassmorphism"),
-        ("Pitch Black (OLED Zero)", "Pure #000000 space background for maximum focus")
+    sfx_opts = [
+        ("Enable UI Audio FX (Sci-Fi Tactile Feedback)", "Subtle mechanical/cyber audio cues on key/UI actions"),
+        ("Silent Mode (Mute UI Audio FX)", "Disable interface sound effects")
     ]
-    c_wall = menu_select(wall_opts, "Select Default Desktop Wallpaper:")
-    walls = ["grid", "glass", "black"]
-    subprocess.run(["/usr/local/bin/kortex-wallpaper", "desktop", walls[c_wall]], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-    # Apply chosen theme immediately
-    subprocess.run(["/usr/local/bin/kortex-theme-apply", "--theme", chosen_theme], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-def step_hardware_and_persistence(st):
-    print_banner(5, "HARDWARE PROFILE & DISK INSTALLATION")
+    c_sfx = interactive_select(4, "QUICK THEME & HARDWARE PROFILE", "3/4: Interface Audio FX:", sfx_opts)
+    st["interface"]["ui_sounds"] = (c_sfx == 0)
+    if c_sfx == 1:
+        subprocess.run("pkill -f kortex-audio-fx 2>/dev/null || true", shell=True)
 
     pwr_opts = [
-        ("Balanced (Default Recommended)", "Optimal balance between battery life, thermals and 60fps animations"),
-        ("Overdrive (Performance Mode)", "Unrestricted CPU governor, instant animations, maximum frame rates"),
-        ("Eco Mode (Battery Saver)", "Powersave CPU governor, animations disabled for extended mobile runtime")
+        ("Balanced (Default Recommended)", "Adaptive schedutil governor, smooth 60fps animations & optimal thermals"),
+        ("Overdrive (Max Performance)", "Performance governor, zero-latency response for heavy workloads"),
+        ("Eco Mode (Battery Saver)", "Powersave governor & reduced background effects for maximum battery life")
     ]
-    c_pwr = menu_select(pwr_opts, "Select Hardware Power & Performance Profile:")
+    c_pwr = interactive_select(4, "QUICK THEME & HARDWARE PROFILE", "4/4: Select Hardware Power Profile (Eco / Balanced / Overdrive):", pwr_opts)
     pwrs = ["balanced", "performance", "powersave"]
     st["system"]["power_profile"] = pwrs[c_pwr]
-
-    # Apply power profile if cpupower is installed
     try:
-        subprocess.run(["cpupower", "frequency-set", "-g", pwrs[c_pwr]], stderr=subprocess.DEVNULL)
+        subprocess.run(["cpupower", "frequency-set", "-g", pwrs[c_pwr]], stderr=subprocess.DEVNULL, timeout=2)
     except Exception:
         pass
 
-    # Save final master state
+def step_5_install_or_live(st):
+    # Save state and apply theme before final choice
     os.makedirs(os.path.dirname(MASTER_STATE), exist_ok=True)
     with open(MASTER_STATE, "w", encoding="utf-8") as f:
         json.dump(st, f, indent=2, ensure_ascii=False)
+    with open(LEGACY_STATE, "w", encoding="utf-8") as f:
+        json.dump(st, f, indent=2, ensure_ascii=False)
 
-    print("\n\033[1;32m[✓] All customization parameters saved to permanent Master State!\033[0m\n")
+    chosen_theme = st.get("theme", {}).get("name", "cyan")
+    subprocess.run(["/usr/local/bin/kortex-theme-apply", "--theme", chosen_theme], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-    # Install options
     inst_opts = [
-        ("Save & Start KortexOS Live Session", "Begin using KortexOS immediately with all chosen settings"),
-        ("INSTALL TO DISK (WITH CURRENT SETTINGS)", "Transfer live settings directly into target hard drive installation!")
+        ("Continue in Live Mode (Save & Launch Desktop)", "Create ~/.config/kortex/.setup_done and enter your configured desktop"),
+        ("Install KortexOS to Disk (With Persistent Settings)", "Launch Disk Installer and automatically copy master-state.json into target OS")
     ]
-    c_inst = menu_select(inst_opts, "Ready to proceed:")
-    
-    if c_inst == 1:
-        print("\n\033[1;36m[*] Launching KortexOS System Installer with automated settings persistence...\033[0m")
-        # Ensure persistence directory exists for installer hook
-        os.makedirs("/run/kortex-persistence", exist_ok=True)
-        shutil.copy2(MASTER_STATE, "/run/kortex-persistence/master-state.json")
-        time.sleep(1)
-        if os.path.exists("/usr/local/bin/kortex-install"):
-            subprocess.run(["/usr/local/bin/kortex-install"])
-        else:
-            print("[*] Target disk installer initiated.")
-            time.sleep(2)
+    c_inst = interactive_select(5, "INSTALL / LIVE PERSISTENCE", "All settings saved to master-state.json! Choose how to proceed:", inst_opts)
 
-    # Touch setup done flag
+    # Create .setup_done flag
     with open(SETUP_FLAG, "w", encoding="utf-8") as f:
         f.write(f"Setup completed at: {time.ctime()}\n")
 
-    clear_screen()
-    print("\n\033[1;32m====================================================================\033[0m")
-    print("\033[1;37m        KORTEX-OS INITIAL SETUP COMPLETE! WELCOME ABOARD.           \033[0m")
-    print("\033[1;32m====================================================================\033[0m")
-    print("  • Press \033[1;36mSuper + Space\033[0m anytime for Kortex Spotlight")
-    print("  • Press \033[1;36mSuper + Tab\033[0m to toggle between Cyber-Deck, MacBook & Tiling")
-    print("  • Press \033[1;36mSuper + F1\033[0m for complete Hotkey Cheatsheet HUD\n")
-    time.sleep(2)
+    # Copy to persistence staging directory for installer
+    try:
+        os.makedirs("/run/kortex-persistence", exist_ok=True)
+        shutil.copy2(MASTER_STATE, "/run/kortex-persistence/master-state.json")
+    except Exception:
+        pass
+
+    if c_inst == 1 and os.path.exists("/usr/local/bin/kortex-install"):
+        print("\033[2J\033[H\033[1;36m[*] Launching KortexOS Disk Installer with master-state.json persistence...\033[0m\n")
+        subprocess.run(["/usr/local/bin/kortex-install"])
 
 def main():
-    # If called with --force, rerun even if .setup_done exists
     if "--force" not in sys.argv and os.path.exists(SETUP_FLAG):
         print("[*] KortexOS OOBE already completed. Use 'kortex-oobe --force' to rerun.")
         sys.exit(0)
 
-    # Load initial master state
     st = {}
     if os.path.exists(MASTER_STATE):
         try:
@@ -301,24 +353,27 @@ def main():
                 st = json.load(f)
         except Exception:
             pass
-    if not st:
-        st = {
-            "system": {},
-            "interface": {},
-            "theme": {"palette": {}, "borders": {}, "glass": {}, "animations": {}},
-            "wallpaper": {},
-            "grid_widgets": {},
-            "hotkeys": {}
-        }
+
+    for sec, default_val in [
+        ("system", {"language": "en", "timezone": "Europe/Chisinau", "kb_layout": "us,ru", "kb_toggle": "grp:alt_shift_toggle", "power_profile": "balanced"}),
+        ("interface", {"philosophy": "cyberdeck", "dock_enabled": True, "gestures": True, "ui_sounds": True}),
+        ("theme", {"name": "cyan", "palette": {}, "borders": {"size": 2, "rounding": 6, "gaps_in": 6, "gaps_out": 10, "mode": "dual_gradient", "gradient_angle": 45, "glow_radius": 15}, "glass": {"opacity_active": 0.95, "opacity_inactive": 0.85, "opacity_panels": 0.90, "blur_enabled": True, "blur_size": 8, "blur_passes": 3, "blur_vibrancy": 0.1696, "xray": False}, "animations": {"mode": "smooth"}}),
+        ("wallpaper", {}),
+        ("grid_widgets", {}),
+        ("hotkeys", {})
+    ]:
+        if sec not in st or not isinstance(st[sec], dict):
+            st[sec] = default_val
 
     try:
-        step_locale_and_keyboard(st)
-        step_network_and_bluetooth(st)
-        step_interface_philosophy(st)
-        step_visual_style(st)
-        step_hardware_and_persistence(st)
+        step_1_localization(st)
+        step_2_network_and_audio(st)
+        step_3_desktop_mode(st)
+        step_4_theme_and_hardware(st)
+        step_5_install_or_live(st)
     except KeyboardInterrupt:
-        print("\n[!] Setup cancelled by user.")
+        with open(SETUP_FLAG, "w", encoding="utf-8") as f:
+            f.write(f"Setup skipped at: {time.ctime()}\n")
         sys.exit(0)
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 {
     "layer": "top",
     "position": "top",
-    "height": 26,
+    "height": 28,
     "modules-left": [
         "custom/menu",
         "custom/layout",
@@ -16,10 +16,12 @@
         "wlr/taskbar"
     ],
     "modules-center": [
+        "custom/spotlight",
         "custom/plugins",
         "custom/logo"
     ],
     "modules-right": [
+        "custom/control-center",
         "network",
         "cpu",
         "memory",
@@ -31,29 +33,39 @@
     "custom/menu": {
         "format": "[ KORTEX ]",
         "on-click": "/usr/local/bin/kortex-menu",
-        "tooltip": "Main Menu // Applications (Super / Super+D)"
+        "tooltip": "Main Menu // Applications (Super+D)"
     },
     "custom/layout": {
         "exec": "/usr/local/bin/kortex-layout waybar",
         "return-type": "json",
         "interval": 2,
         "on-click": "/usr/local/bin/kortex-layout next",
-        "tooltip": "Switch Desktop Mode: Grid / Tiling / Floating (Super+Tab)"
+        "tooltip": "Switch Desktop Mode: Cyber-Deck / MacBook Pro / Pure Tiling (Super+Tab)"
     },
     "custom/win-min": {
         "format": "[ _ ]",
-        "on-click": "hyprctl dispatch togglefloating",
-        "tooltip": "Toggle Floating / Tile Window"
+        "on-click": "hyprctl eval 'hl.dispatch(hl.dsp.window.float({ action = \"toggle\" }))' || hyprctl dispatch togglefloating",
+        "tooltip": "Minimize / Toggle Floating Active Window"
     },
     "custom/win-max": {
         "format": "[ □ ]",
-        "on-click": "hyprctl dispatch fullscreen 1",
-        "tooltip": "Maximize / Unmaximize Active Window"
+        "on-click": "hyprctl eval 'hl.dispatch(hl.dsp.window.fullscreen({ action = \"toggle\" }))' || hyprctl dispatch fullscreen 1",
+        "tooltip": "Maximize / Fullscreen Active Window (Super+F)"
     },
     "custom/win-close": {
-        "format": "[ ✕ CLOSE ]",
-        "on-click": "hyprctl dispatch killactive",
-        "tooltip": "Close Active Window (Alt+F4 / Super+Q)"
+        "format": "[ ✕ ]",
+        "on-click": "hyprctl eval 'hl.dispatch(hl.dsp.window.close())' || hyprctl dispatch killactive",
+        "tooltip": "Close Active Window (Super+Q / Alt+F4)"
+    },
+    "custom/spotlight": {
+        "format": "[ ⌕ SPOTLIGHT ]",
+        "on-click": "/usr/local/bin/kortex-spotlight",
+        "tooltip": "Kortex Spotlight Search, Calculator & Quick Commands (Super+Space)"
+    },
+    "custom/control-center": {
+        "format": "[ 🎛 CTRL ]",
+        "on-click": "/usr/local/bin/kortex-control-center",
+        "tooltip": "MacBook Control Center: Volume, Brightness, Wi-Fi, Bluetooth, DND"
     },
     "custom/guide": {
         "format": "[ ? GUIDE ]",
@@ -73,7 +85,7 @@
     "custom/settings": {
         "format": "[SET]",
         "on-click": "/usr/local/bin/kortex-open settings",
-        "tooltip": "Kortex Control Panel & Theme Studio (Super+S)"
+        "tooltip": "Kortex Theme Studio Pro & Settings (Super+S)"
     },
     "custom/guard": {
         "format": "[NET]",
@@ -108,7 +120,8 @@
         "format-wifi": "Net: {signalStrength}%",
         "format-ethernet": "Net: {ipaddr}",
         "format-disconnected": "Net: Offline",
-        "tooltip-format": "{ifname}: {ipaddr}"
+        "tooltip-format": "{ifname}: {ipaddr}",
+        "on-click": "/usr/local/bin/kortex-control-center"
     },
     "cpu": {
         "interval": 2,
@@ -123,11 +136,12 @@
         "format": "Disk: {percentage_used}%"
     },
     "battery": {
-        "format": "Battery: {capacity}%",
-        "format-charging": "Battery: {capacity}% [AC]"
+        "format": "Bat: {capacity}%",
+        "format-charging": "Bat: {capacity}% [AC]"
     },
     "clock": {
         "interval": 1,
-        "format": "{:%H:%M:%S}"
+        "format": "{:%H:%M:%S}",
+        "on-click": "/usr/local/bin/kortex-control-center"
     }
 }

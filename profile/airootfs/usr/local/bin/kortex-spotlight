@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 """
-KORTEX-SPOTLIGHT: Instant Unified Center Search, Calculator & Action HUD
+KORTEX-SPOTLIGHT: Instant Unified Center Search, File Finder, Calculator & Action HUD
 Triggered via Super + Space (MacBook Spotlight UX on Arch Linux)
+Supports:
+- Application Launcher (.desktop files)
+- Fast File Search (Home directory, Documents, Configs, Backgrounds)
+- Built-in Math Calculator (e.g., 42*8, sqrt(256), sin(pi/2))
+- Quick Commands: theme cyan, opacity 85, layout mac, wallpaper matrix, etc.
 """
 
 import sys
@@ -24,7 +29,6 @@ def get_apps():
             try:
                 name = None
                 exec_cmd = None
-                icon = ""
                 with open(df, "r", encoding="utf-8", errors="ignore") as f:
                     for line in f:
                         if line.startswith("Name=") and not name:
@@ -40,11 +44,50 @@ def get_apps():
                 pass
     return apps
 
+def get_indexed_files(max_files=120):
+    files = {}
+    search_roots = [
+        os.path.expanduser("~"),
+        os.path.expanduser("~/.config/kortex"),
+        os.path.expanduser("~/.config/hypr"),
+        "/usr/share/backgrounds/kortex"
+    ]
+    count = 0
+    for root_dir in search_roots:
+        if not os.path.exists(root_dir):
+            continue
+        for dirpath, dirnames, filenames in os.walk(root_dir):
+            # Prune hidden cache/git folders except .config/kortex and .config/hypr
+            dirnames[:] = [d for d in dirnames if not d.startswith(".") or d in (".config", "kortex", "hypr")][:8]
+            depth = dirpath[len(root_dir):].count(os.sep)
+            if depth > 2:
+                continue
+            for fn in filenames:
+                if fn.startswith(".") and fn not in (".bashrc", ".bash_profile"):
+                    continue
+                full_p = os.path.join(dirpath, fn)
+                short_p = full_p.replace(os.path.expanduser("~"), "~")
+                files[f"📄 File: {short_p}"] = full_p
+                count += 1
+                if count >= max_files:
+                    return files
+    return files
+
+def open_file(filepath):
+    ext = os.path.splitext(filepath)[1].lower()
+    if ext in (".png", ".jpg", ".jpeg", ".gif", ".webp"):
+        subprocess.Popen(["imv", filepath])
+    elif ext in (".mp4", ".mkv", ".mp3", ".wav", ".ogg", ".flac"):
+        subprocess.Popen(["mpv", filepath])
+    else:
+        subprocess.Popen(["kitty", "--class", "kortex-files", "-e", "nano", filepath])
+
 def evaluate_math(expr):
     cleaned = expr.strip()
     if not re.match(r'^[0-9\+\-\*\/\%\^\(\)\.\s\,a-zA-Z]+$', cleaned):
         return None
-    # Allowed math functions
+    if cleaned.isalpha():
+        return None
     safe_dict = {
         "sin": math.sin, "cos": math.cos, "tan": math.tan,
         "sqrt": math.sqrt, "log": math.log, "log10": math.log10,
@@ -52,10 +95,11 @@ def evaluate_math(expr):
         "round": round
     }
     try:
-        # replace ^ with **
         py_expr = cleaned.replace("^", "**")
         val = eval(py_expr, {"__builtins__": None}, safe_dict)
-        return str(val)
+        if isinstance(val, (int, float)):
+            return str(val)
+        return None
     except Exception:
         return None
 
@@ -74,13 +118,16 @@ def copy_clipboard(text):
 
 def main():
     apps = get_apps()
+    files = get_indexed_files()
 
-    # Pre-canned quick commands
     commands = {
+        "🎛️ Control Center: Volume, Brightness, Wi-Fi, BT & DND": "/usr/local/bin/kortex-control-center",
+        "💬 KortexGram: E2EE Cyberpunk Messenger": "/usr/local/bin/kortex-gram",
         "🎵 Music: Cyberdeck Audio & Synthwave Radio": "/usr/local/bin/kortex-open music",
         "📖 System Tour & Guide: Interactive Navigator": "/usr/local/bin/kortex-open tour",
         "🏪 Store: Kortex App Hub (Software Center)": "/usr/local/bin/kortex-open store",
-        "⚙️ Settings: Kortex Customization Studio": "/usr/local/bin/kortex-settings",
+        "⚙️ Settings: Kortex Theme Studio Pro": "/usr/local/bin/kortex-settings",
+        "🧭 OOBE: Run Initial Setup Wizard": "kitty --class kortex-oobe --title 'KORTEX-OS SETUP' -e /usr/local/bin/kortex-oobe --force",
         "🎨 Theme: Cyber Cyan (Neon Blue)": "/usr/local/bin/kortex-theme-apply --theme cyan",
         "🎨 Theme: Tokyo Night (Indigo & Lavender)": "/usr/local/bin/kortex-theme-apply --theme tokyonight",
         "🎨 Theme: Dracula (Gothic Violet & Pink)": "/usr/local/bin/kortex-theme-apply --theme dracula",
@@ -90,25 +137,29 @@ def main():
         "🎨 Theme: Crimson (Red Combat HUD)": "/usr/local/bin/kortex-theme-apply --theme crimson",
         "🖥️ Layout: MacBook Pro Mode (Glass & Dock)": "/usr/local/bin/kortex-layout floating",
         "🖥️ Layout: Cyber-Deck (eDEX 5-Panel Grid)": "/usr/local/bin/kortex-layout grid",
-        "🖥️ Layout: Pure Tiling (Dev Fullscreen)": "/usr/local/bin/kortex-layout tiling",
-        "🖼️ Wallpaper: Cyber Grid (Vector Tech)": "/usr/local/bin/kortex-wallpaper desktop grid",
-        "🖼️ Wallpaper: Cyber Glass (MacBook Mode)": "/usr/local/bin/kortex-wallpaper desktop glass",
-        "🖼️ Wallpaper: Pitch Black (OLED Zero)": "/usr/local/bin/kortex-wallpaper desktop black",
+        "🖥️ Layout: Pure Tiling (Pro Developer)": "/usr/local/bin/kortex-layout tiling",
+        "🖼️ Wallpaper: Cyber Grid (Vector Tron)": "/usr/local/bin/kortex-wallpaper desktop grid",
+        "🖼️ Wallpaper: Cyber Glass (MacBook Mesh)": "/usr/local/bin/kortex-wallpaper desktop glass",
+        "🖼️ Wallpaper: Matrix Rain (Phosphor Code)": "/usr/local/bin/kortex-wallpaper desktop matrix",
+        "🖼️ Wallpaper: Tokyo Horizon (Synthwave)": "/usr/local/bin/kortex-wallpaper desktop tokyo",
+        "🖼️ Wallpaper: Pitch Black (OLED #000000)": "/usr/local/bin/kortex-wallpaper desktop black",
+        "💻 Terminal Wallpaper: Tron Grid": "/usr/local/bin/kortex-wallpaper terminal tron 0.75",
+        "💻 Terminal Wallpaper: Matrix Bitgrid": "/usr/local/bin/kortex-wallpaper terminal matrix 0.75",
+        "💻 Terminal Wallpaper: Dark Carbon": "/usr/local/bin/kortex-wallpaper terminal carbon 0.75",
+        "💻 Terminal Wallpaper: Disable": "/usr/local/bin/kortex-wallpaper terminal none",
         "⌨️ Cheatsheet: System Hotkeys (HUD)": "/usr/local/bin/kortex-help-hud",
-        "🔒 System: Lock Screen": "swaylock -f -c 000000 || hyprlock",
+        "🔒 System: Lock Screen": "/usr/local/bin/kortex-open lock",
         "🔄 System: Reboot": "systemctl reboot",
         "🛑 System: Power Off": "systemctl poweroff"
     }
 
-    candidates = list(commands.keys()) + sorted(list(apps.keys()))
+    candidates = list(commands.keys()) + sorted(list(apps.keys())) + sorted(list(files.keys()))
     prompt_text = "\n".join(candidates)
 
     rofi_theme = """
-    * {
-        font: "JetBrainsMono Nerd Font 12";
-    }
+    * { font: "JetBrainsMono Nerd Font 12"; }
     window {
-        width: 680px;
+        width: 720px;
         border-radius: 14px;
         border: 2px;
         border-color: #00f0ff;
@@ -117,37 +168,21 @@ def main():
         location: center;
         anchor: center;
     }
-    mainbox {
-        background-color: transparent;
-        spacing: 10px;
-    }
+    mainbox { background-color: transparent; spacing: 10px; }
     inputbar {
-        background-color: rgba(18, 22, 31, 0.85);
+        background-color: rgba(18, 22, 31, 0.88);
         border-radius: 10px;
         padding: 10px 14px;
         children: [ prompt, entry ];
     }
-    prompt {
-        text-color: #00f0ff;
-        font-weight: bold;
-        margin: 0 8px 0 0;
-    }
+    prompt { text-color: #00f0ff; font-weight: bold; margin: 0 8px 0 0; }
     entry {
         text-color: #ffffff;
-        placeholder: "Search apps, math (e.g. 42*8), theme matrix, wallpaper glass...";
+        placeholder: "Apps, files, math (42*8), theme cyan, opacity 85, layout mac...";
         placeholder-color: #6e7681;
     }
-    listview {
-        lines: 8;
-        background-color: transparent;
-        spacing: 4px;
-    }
-    element {
-        border-radius: 8px;
-        padding: 8px 12px;
-        background-color: transparent;
-        text-color: #c9d1d9;
-    }
+    listview { lines: 9; background-color: transparent; spacing: 4px; }
+    element { border-radius: 8px; padding: 8px 12px; background-color: transparent; text-color: #c9d1d9; }
     element selected {
         background-color: rgba(0, 240, 255, 0.20);
         text-color: #00f0ff;
@@ -167,19 +202,18 @@ def main():
     if not choice:
         sys.exit(0)
 
-    # 1. Check exact command match
     if choice in commands:
-        cmd = commands[choice]
-        subprocess.Popen(cmd, shell=True)
+        subprocess.Popen(commands[choice], shell=True)
         sys.exit(0)
 
-    # 2. Check app match
     if choice in apps:
-        cmd = apps[choice]
-        subprocess.Popen(cmd, shell=True)
+        subprocess.Popen(apps[choice], shell=True)
         sys.exit(0)
 
-    # 3. Check for Math Calculation
+    if choice in files:
+        open_file(files[choice])
+        sys.exit(0)
+
     math_val = evaluate_math(choice)
     if math_val is not None:
         copy_clipboard(math_val)
@@ -187,7 +221,6 @@ def main():
         print(f"{choice} = {math_val}")
         sys.exit(0)
 
-    # 4. Check Quick CLI patterns
     lower = choice.lower().strip()
     if lower in ("music", "player", "radio", "song", "play"):
         subprocess.Popen("/usr/local/bin/kortex-open music", shell=True)
@@ -205,7 +238,7 @@ def main():
 
     if lower.startswith("layout "):
         l_name = lower.split(" ", 1)[1].strip()
-        if l_name in ("mac", "macbook", "floating", "float"):
+        if l_name in ("mac", "macbook", "floating", "float", "classic"):
             subprocess.run(["/usr/local/bin/kortex-layout", "floating"])
         elif l_name in ("grid", "cyber", "cyberdeck"):
             subprocess.run(["/usr/local/bin/kortex-layout", "grid"])
@@ -226,7 +259,10 @@ def main():
         notify("Kortex Glass", f"Window opacity set to: {op_val}")
         sys.exit(0)
 
-    # 5. Fallback: Run as shell command
+    if os.path.exists(os.path.expanduser(choice)):
+        open_file(os.path.expanduser(choice))
+        sys.exit(0)
+
     subprocess.Popen(choice, shell=True)
 
 if __name__ == "__main__":

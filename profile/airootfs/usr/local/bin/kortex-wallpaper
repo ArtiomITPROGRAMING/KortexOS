@@ -1,27 +1,51 @@
 #!/usr/bin/env python3
 """
 KORTEX-WALLPAPER: Per-App & Global Wallpaper Engine for KortexOS
-Supports Desktop Wallpaper (hyprpaper / swww / pure black / cyber grid)
-and Per-App Terminal Wallpaper (Kitty background_image + tint dimming)
+Supports:
+- Global Desktop Wallpapers (swww / hyprpaper / procedural cyber-grid / pure #000000)
+- Per-App Terminal Wallpapers (Kitty background_image, background_image_layout scaled, background_tint)
+  with Terminal Wallpaper Dimming (0%-95%) and instant reload via kill -SIGUSR1 $(pidof kitty).
+- Starter Offline Pack in /usr/share/backgrounds/kortex/ (5 Desktop + 5 Terminal Wallpapers).
 """
 
 import sys
 import os
 import json
-import glob
 import subprocess
 
 STATE_FILE = os.path.expanduser("~/.config/kortex/master-state.json")
 LEGACY_CONF = os.path.expanduser("~/.config/kortex/config.json")
 HYPRPAPER_CONF = os.path.expanduser("~/.config/hypr/hyprpaper.conf")
 KITTY_CONF = os.path.expanduser("~/.config/kitty/kitty.conf")
-WALLPAPER_DIR = "/usr/share/kortex/wallpapers"
 
-PRESETS = {
-    "grid": os.path.join(WALLPAPER_DIR, "cyber_grid.png"),
-    "glass": os.path.join(WALLPAPER_DIR, "cyber_glass.png"),
-    "black": os.path.join(WALLPAPER_DIR, "pitch_black.png"),
-    "default": os.path.join(WALLPAPER_DIR, "cyber_grid.png")
+BG_DIR = "/usr/share/backgrounds/kortex"
+FALLBACK_DIR = "/usr/share/kortex/wallpapers"
+
+def resolve_asset(filename):
+    p1 = os.path.join(BG_DIR, filename)
+    if os.path.exists(p1):
+        return p1
+    return os.path.join(FALLBACK_DIR, filename)
+
+DESKTOP_PRESETS = {
+    "grid":       resolve_asset("cyber_grid.png"),
+    "cyber_grid": resolve_asset("cyber_grid.png"),
+    "procedural": resolve_asset("cyber_grid.png"),
+    "glass":      resolve_asset("cyber_glass.png"),
+    "matrix":     resolve_asset("matrix_rain.png"),
+    "tokyo":      resolve_asset("tokyo_horizon.png"),
+    "black":      resolve_asset("pitch_black.png"),
+    "#000000":    resolve_asset("pitch_black.png"),
+    "default":    resolve_asset("cyber_grid.png")
+}
+
+TERMINAL_PRESETS = {
+    "tron":     resolve_asset("term_tron_grid.png"),
+    "grid":     resolve_asset("term_tron_grid.png"),
+    "matrix":   resolve_asset("term_matrix.png"),
+    "carbon":   resolve_asset("term_dark_carbon.png"),
+    "hex":      resolve_asset("term_hex_mesh.png"),
+    "obsidian": resolve_asset("term_obsidian_wave.png"),
 }
 
 def load_master_state():
@@ -45,6 +69,8 @@ def save_master_state(state):
     try:
         with open(STATE_FILE, "w", encoding="utf-8") as f:
             json.dump(state, f, indent=2, ensure_ascii=False)
+        with open(LEGACY_CONF, "w", encoding="utf-8") as f:
+            json.dump(state, f, indent=2, ensure_ascii=False)
     except Exception:
         pass
 
@@ -61,13 +87,18 @@ def get_hypr_env():
     return env
 
 def apply_desktop_wallpaper(img_path):
-    # Resolve preset if shorthand
-    if img_path.lower() in PRESETS:
-        img_path = PRESETS[img_path.lower()]
-    
+    key = img_path.strip().lower()
+    if key in DESKTOP_PRESETS:
+        img_path = DESKTOP_PRESETS[key]
+    elif os.path.exists(os.path.join(BG_DIR, img_path)):
+        img_path = os.path.join(BG_DIR, img_path)
+    elif os.path.exists(os.path.join(FALLBACK_DIR, img_path)):
+        img_path = os.path.join(FALLBACK_DIR, img_path)
+    else:
+        img_path = os.path.expanduser(img_path)
+
     if not os.path.exists(img_path):
-        # Fallback to black if not found
-        img_path = PRESETS["black"]
+        img_path = DESKTOP_PRESETS["black"]
 
     # 1. Update hyprpaper.conf
     os.makedirs(os.path.dirname(HYPRPAPER_CONF), exist_ok=True)
@@ -83,22 +114,21 @@ ipc = on
     except Exception as e:
         print(f"[-] Warning: Failed to write hyprpaper.conf: {e}")
 
-    # 2. Live apply via hyprpaper / swww / hyprctl
+    # 2. Live apply via swww or hyprpaper
     env = get_hypr_env()
-    
-    # Try swww if daemon running
-    swww_running = subprocess.run(["pgrep", "-x", "swww-daemon"], capture_output=True).returncode == 0
-    if swww_running:
-        subprocess.run(["swww", "img", img_path, "--transition-type", "fade", "--transition-step", "90"], env=env, capture_output=True)
-    else:
-        # Check hyprpaper
-        hp_running = subprocess.run(["pgrep", "-x", "hyprpaper"], capture_output=True).returncode == 0
-        if hp_running:
-            subprocess.run(["hyprctl", "hyprpaper", "preload", img_path], env=env, capture_output=True, timeout=2)
-            subprocess.run(["hyprctl", "hyprpaper", "wallpaper", f",{img_path}"], env=env, capture_output=True, timeout=2)
+    try:
+        swww_running = subprocess.run(["pgrep", "-x", "swww-daemon"], capture_output=True).returncode == 0
+        if swww_running:
+            subprocess.run(["swww", "img", img_path, "--transition-type", "fade", "--transition-step", "90"], env=env, capture_output=True)
         else:
-            # Start hyprpaper in background
-            subprocess.Popen(["hyprpaper", "-c", HYPRPAPER_CONF], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            hp_running = subprocess.run(["pgrep", "-x", "hyprpaper"], capture_output=True).returncode == 0
+            if hp_running:
+                subprocess.run(["hyprctl", "hyprpaper", "preload", img_path], env=env, capture_output=True, timeout=2)
+                subprocess.run(["hyprctl", "hyprpaper", "wallpaper", f",{img_path}"], env=env, capture_output=True, timeout=2)
+            else:
+                subprocess.Popen(["hyprpaper", "-c", HYPRPAPER_CONF], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        pass
 
     # 3. Update master state
     st = load_master_state()
@@ -106,17 +136,38 @@ ipc = on
         st["wallpaper"] = {}
     st["wallpaper"]["desktop"] = {
         "path": img_path,
-        "type": "custom" if img_path not in PRESETS.values() else "preset"
+        "type": "preset" if img_path in DESKTOP_PRESETS.values() else "custom"
     }
     save_master_state(st)
     print(f"[+] Desktop wallpaper applied: {img_path}")
 
-def apply_terminal_wallpaper(img_path, dimming=0.35):
+def apply_terminal_wallpaper(img_path, dimming=0.75):
     """
-    Sets Kitty terminal background image and dimming (background_tint)
+    Sets Kitty terminal background image and dimming (background_tint 0.0 - 0.95)
+    and reloads via kill -SIGUSR1 $(pidof kitty).
     """
-    enable = bool(img_path and img_path.lower() != "none" and os.path.exists(img_path))
-    dim_val = max(0.0, min(0.95, float(dimming)))
+    raw = (img_path or "").strip()
+    key = raw.lower()
+    if key in ("none", "off", "false", "disable", "disabled", ""):
+        resolved = ""
+        enable = False
+    elif key in TERMINAL_PRESETS:
+        resolved = TERMINAL_PRESETS[key]
+        enable = os.path.exists(resolved)
+    elif key in DESKTOP_PRESETS:
+        resolved = DESKTOP_PRESETS[key]
+        enable = os.path.exists(resolved)
+    elif os.path.exists(os.path.join(BG_DIR, raw)):
+        resolved = os.path.join(BG_DIR, raw)
+        enable = True
+    else:
+        resolved = os.path.expanduser(raw)
+        enable = os.path.exists(resolved)
+
+    dim_val = float(dimming)
+    if dim_val > 1.0:
+        dim_val = dim_val / 100.0
+    dim_val = max(0.0, min(0.95, dim_val))
 
     os.makedirs(os.path.dirname(KITTY_CONF), exist_ok=True)
     lines = []
@@ -124,57 +175,57 @@ def apply_terminal_wallpaper(img_path, dimming=0.35):
         with open(KITTY_CONF, "r", encoding="utf-8") as f:
             lines = f.readlines()
 
-    # Filter out existing wallpaper keys
     filtered = [l for l in lines if not any(l.strip().startswith(k) for k in [
-        "background_image", "background_image_layout", "background_tint"
+        "background_image", "background_image_layout", "background_tint", "# Kortex Per-App Terminal Wallpaper"
     ])]
 
     if enable:
         filtered.append("\n# Kortex Per-App Terminal Wallpaper\n")
-        filtered.append(f"background_image {img_path}\n")
+        filtered.append(f"background_image {resolved}\n")
         filtered.append("background_image_layout scaled\n")
         filtered.append(f"background_tint {dim_val:.2f}\n")
 
     with open(KITTY_CONF, "w", encoding="utf-8") as f:
         f.writelines(filtered)
 
-    # Live reload all running kitty instances
+    # Instant reload of all running kitty instances
     subprocess.run("kill -SIGUSR1 $(pidof kitty) 2>/dev/null || true", shell=True)
 
-    # Update state
     st = load_master_state()
     if "wallpaper" not in st:
         st["wallpaper"] = {}
     st["wallpaper"]["terminal"] = {
         "image_enabled": enable,
-        "image_path": img_path if enable else "",
+        "image_path": resolved if enable else "",
         "dimming": dim_val
     }
     save_master_state(st)
-    status_str = f"image: {img_path} (tint: {dim_val:.2f})" if enable else "DISABLED"
+    status_str = f"image: {resolved} (background_tint: {dim_val:.2f})" if enable else "DISABLED"
     print(f"[+] Kitty terminal wallpaper: {status_str}")
 
 def print_status():
     st = load_master_state()
     wp = st.get("wallpaper", {})
-    desk = wp.get("desktop", {}).get("path", "Default Cyber Grid")
+    desk = wp.get("desktop", {}).get("path", DESKTOP_PRESETS["grid"])
     term_wp = wp.get("terminal", {})
     term_img = term_wp.get("image_path", "None") if term_wp.get("image_enabled") else "Disabled"
-    dim = term_wp.get("dimming", 0.35)
+    dim = term_wp.get("dimming", 0.75)
     print("┌────────────────────────────────────────────────────────┐")
     print("│             KORTEX WALLPAPER ENGINE STATUS             │")
     print("└────────────────────────────────────────────────────────┘")
-    print(f"  Desktop Wallpaper  : {desk}")
-    print(f"  Terminal Wallpaper : {term_img}")
-    print(f"  Terminal Dimming   : {int(dim * 100)}%")
-    print(f"  Available Presets  : {', '.join(PRESETS.keys())}")
+    print(f"  Desktop Wallpaper   : {desk}")
+    print(f"  Terminal Wallpaper  : {term_img}")
+    print(f"  Terminal Dimming    : {int(dim * 100)}%")
+    print(f"  Wallpaper Pack Dir  : {BG_DIR}")
+    print(f"  Desktop Presets (5) : grid, glass, matrix, tokyo, black")
+    print(f"  Terminal Presets (5): tron, matrix, carbon, hex, obsidian (+ none)")
 
 def main():
     if len(sys.argv) < 2:
         print_status()
         print("\nUsage:")
-        print("  kortex-wallpaper desktop <path|grid|glass|black>")
-        print("  kortex-wallpaper terminal <path|none> [dimming 0.0-0.95]")
+        print("  kortex-wallpaper desktop <path|grid|glass|matrix|tokyo|black>")
+        print("  kortex-wallpaper terminal <path|tron|matrix|carbon|hex|obsidian|none> [dimming 0.0-0.95]")
         print("  kortex-wallpaper status")
         sys.exit(0)
 
@@ -183,14 +234,15 @@ def main():
         target = sys.argv[2] if len(sys.argv) > 2 else "grid"
         apply_desktop_wallpaper(target)
     elif cmd in ("terminal", "term", "kitty"):
-        target = sys.argv[2] if len(sys.argv) > 2 else "none"
-        dim = float(sys.argv[3]) if len(sys.argv) > 3 else 0.35
+        target = sys.argv[2] if len(sys.argv) > 2 else "tron"
+        st = load_master_state()
+        cur_dim = st.get("wallpaper", {}).get("terminal", {}).get("dimming", 0.75)
+        dim = float(sys.argv[3]) if len(sys.argv) > 3 else cur_dim
         apply_terminal_wallpaper(target, dim)
-    elif cmd in ("status", "info"):
+    elif cmd in ("status", "info", "list"):
         print_status()
     else:
-        # Shorthand: treat arg as desktop wallpaper target
-        apply_desktop_wallpaper(cmd)
+        apply_desktop_wallpaper(sys.argv[1])
 
 if __name__ == "__main__":
     main()

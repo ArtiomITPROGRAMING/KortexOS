@@ -1,20 +1,17 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# KORTEX-OS GRID INITIALIZER
-# Staggered Cyberpunk Workspace Spawner (eDEX-UI 5-Module Layout)
+# KORTEX-OS SESSION & GRID INITIALIZER
+# Checks ~/.config/kortex/.setup_done on first boot -> launches kortex-oobe,
+# then activates selected Desktop Mode (Cyber-Deck Grid / MacBook Pro / Tiling)
 # ==============================================================================
 
-# Enable file logging for debugging
 exec > >(tee /tmp/kortex-init.log) 2>&1
 
-# Suppress Hyprland welcome / dialogs and force config reload
-hyprctl reload config-only 2>/dev/null || true
 pkill -9 -f "hyprland-welcome|hyprland-dialog|hyprland-donate" 2>/dev/null || true
 
 export LANG="en_US.UTF-8"
 export LC_ALL="en_US.UTF-8"
 
-# Ensure Wayland environment variables are present
 if [ -z "${XDG_RUNTIME_DIR:-}" ]; then
     export XDG_RUNTIME_DIR="/run/user/$(id -u)"
 fi
@@ -33,44 +30,89 @@ if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
     export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
 fi
 
-# Auto-detect VM environment and guarantee software renderer fallback for kitty
 if systemd-detect-virt --quiet 2>/dev/null; then
     export LIBGL_ALWAYS_SOFTWARE=1
     export WLR_RENDERER_ALLOW_SOFTWARE=1
 fi
 
-# Launch Waybar if not running
+# Ensure Waybar top bar is running
 if ! pgrep -x waybar >/dev/null 2>&1; then
     waybar >/dev/null 2>&1 &
 fi
 
-# Prevent duplicate launches of grid modules (kill all prior kitty instances)
-pkill -f kitty 2>/dev/null || true
+# 1. FIRST-BOOT OOBE CHECK (~/.config/kortex/.setup_done)
+mkdir -p "$HOME/.config/kortex" 2>/dev/null || true
+if [ ! -f "$HOME/.config/kortex/.setup_done" ]; then
+    kitty --class kortex-oobe --title "KORTEX-OS SETUP" -e /usr/local/bin/kortex-oobe
+fi
+
+# 2. Check selected desktop mode in master-state.json unless --force-grid passed
+MASTER_STATE="$HOME/.config/kortex/master-state.json"
+PHILOSOPHY="cyberdeck"
+if [ -f "$MASTER_STATE" ] && command -v jq >/dev/null 2>&1; then
+    PHILOSOPHY=$(jq -r '.interface.philosophy // "cyberdeck"' "$MASTER_STATE" 2>/dev/null || echo "cyberdeck")
+fi
+
+if [ "${1:-}" != "--force-grid" ]; then
+    if [ "$PHILOSOPHY" = "macbook" ]; then
+        exec /usr/local/bin/kortex-layout floating
+    elif [ "$PHILOSOPHY" = "tiling" ]; then
+        exec /usr/local/bin/kortex-layout tiling
+    fi
+fi
+
+# 3. Cyber-Deck 5-Panel Grid Spawner (only kill grid module classes, never user/OOBE windows)
+pkill -f "kitty --class kortex-term" 2>/dev/null || true
+pkill -f "kitty --class kortex-pulse" 2>/dev/null || true
+pkill -f "kitty --class kortex-net" 2>/dev/null || true
+pkill -f "kitty --class kortex-files" 2>/dev/null || true
+pkill -f "kitty --class kortex-kb" 2>/dev/null || true
+pkill -f "waybar -c .*config-dock" 2>/dev/null || true
 sleep 0.2
 
-# 1. Main Center Terminal (First) with 5 eDEX-UI tabs
-if [ -f /etc/kortex/kitty-main.session ]; then
-    kitty --class kortex-term --session /etc/kortex/kitty-main.session &
-else
-    kitty --class kortex-term --title "MAIN" &
+widget_enabled() {
+    local w_name="$1"
+    if [ -f "$MASTER_STATE" ] && command -v jq >/dev/null 2>&1; then
+        local val
+        val=$(jq -r ".grid_widgets.${w_name} // true" "$MASTER_STATE" 2>/dev/null || echo "true")
+        [ "$val" != "false" ]
+        return $?
+    fi
+    return 0
+}
+
+# 1. Main Center Terminal
+if widget_enabled "terminal"; then
+    if [ -f /etc/kortex/kitty-main.session ]; then
+        kitty --class kortex-term --session /etc/kortex/kitty-main.session &
+    else
+        kitty --class kortex-term --title "MAIN" &
+    fi
+    sleep 0.15
 fi
-sleep 0.15
 
 # 2. System Telemetry Pulse (Left)
-kitty --class kortex-pulse -e /usr/local/bin/kortex-sys-panel &
-sleep 0.15
+if widget_enabled "sys_panel"; then
+    kitty --class kortex-pulse -e /usr/local/bin/kortex-sys-panel &
+    sleep 0.15
+fi
 
 # 3. 3D Globe & Network Telemetry (Right-Top)
-kitty --class kortex-net -e /usr/local/bin/kortex-net-monitor &
-sleep 0.15
+if widget_enabled "globe_net"; then
+    kitty --class kortex-net -e /usr/local/bin/kortex-net-monitor &
+    sleep 0.15
+fi
 
 # 4. File Grid Explorer (Center-Bottom)
-kitty --class kortex-files -e /usr/local/bin/kortex-file-grid &
-sleep 0.15
+if widget_enabled "file_grid"; then
+    kitty --class kortex-files -e /usr/local/bin/kortex-file-grid &
+    sleep 0.15
+fi
 
 # 5. Interactive QWERTY Keyboard (Right-Bottom)
-kitty --class kortex-kb -e /usr/local/bin/kortex-keyboard &
-sleep 0.2
+if widget_enabled "virtual_keyboard"; then
+    kitty --class kortex-kb -e /usr/local/bin/kortex-keyboard &
+    sleep 0.2
+fi
 
-# Automatically align all 5 windows to their target coordinates & sizes
 /usr/local/bin/kortex-grid-align &

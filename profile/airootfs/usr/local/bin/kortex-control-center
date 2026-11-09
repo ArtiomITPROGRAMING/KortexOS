@@ -1,0 +1,133 @@
+#!/usr/bin/env python3
+"""
+KORTEX-CONTROL-CENTER: Dropdown MacBook-style Control Center
+Controls:
+- Audio Volume (PipeWire / wpctl)
+- Screen Brightness (brightnessctl)
+- Wi-Fi Radio & Network Manager (nmcli / nmtui)
+- Bluetooth Power (bluetoothctl)
+- Do Not Disturb (DND) Mode
+- Quick Desktop Mode & Theme Studio Pro
+"""
+
+import os
+import sys
+import subprocess
+
+DND_FLAG = os.path.expanduser("~/.config/kortex/.dnd")
+
+def get_volume():
+    try:
+        res = subprocess.run(["wpctl", "get-volume", "@DEFAULT_AUDIO_SINK@"], capture_output=True, text=True, timeout=2)
+        out = res.stdout.strip()
+        if "MUTED" in out:
+            return "MUTED"
+        parts = out.split(":")
+        if len(parts) > 1:
+            v = float(parts[1].strip().split()[0])
+            return f"{int(v * 100)}%"
+    except Exception:
+        pass
+    return "75%"
+
+def get_brightness():
+    try:
+        res = subprocess.run(["brightnessctl", "-m"], capture_output=True, text=True, timeout=2)
+        parts = res.stdout.strip().split(",")
+        if len(parts) >= 4:
+            return parts[3]
+    except Exception:
+        pass
+    return "100%"
+
+def get_wifi_state():
+    try:
+        res = subprocess.run(["nmcli", "radio", "wifi"], capture_output=True, text=True, timeout=2)
+        return res.stdout.strip().upper() or "ENABLED"
+    except Exception:
+        return "ENABLED"
+
+def get_bt_state():
+    try:
+        res = subprocess.run(["bluetoothctl", "show"], capture_output=True, text=True, timeout=2)
+        return "ON" if "Powered: yes" in res.stdout else "OFF"
+    except Exception:
+        return "OFF"
+
+def main():
+    vol = get_volume()
+    bri = get_brightness()
+    wifi = get_wifi_state()
+    bt = get_bt_state()
+    dnd = "ON (Silent)" if os.path.exists(DND_FLAG) else "OFF (Active)"
+
+    items = [
+        (f"🔊 Volume ({vol}) : +10% Raise", "wpctl set-volume -l 1.5 @DEFAULT_AUDIO_SINK@ 10%+"),
+        (f"🔉 Volume ({vol}) : -10% Lower", "wpctl set-volume @DEFAULT_AUDIO_SINK@ 10%-"),
+        (f"🔇 Volume ({vol}) : Toggle Mute", "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"),
+        (f"☀️ Brightness ({bri}) : +15% Brighter", "brightnessctl set +15%"),
+        (f"🌙 Brightness ({bri}) : -15% Dimmer", "brightnessctl set 15%-"),
+        (f"💡 Brightness ({bri}) : Set 100% Max", "brightnessctl set 100%"),
+        (f"📶 Wi-Fi [{wifi}] : Toggle Wireless Radio", f"nmcli radio wifi {'off' if wifi == 'ENABLED' else 'on'}"),
+        (f"🌐 Wi-Fi Networks : Open Network Manager (nmtui)", "kitty --class nm-connection-editor -e nmtui"),
+        (f"🦷 Bluetooth [{bt}] : Toggle Power", f"bluetoothctl power {'off' if bt == 'ON' else 'on'}"),
+        (f"🔕 Do Not Disturb [{dnd}] : Toggle DND", "TOGGLE_DND"),
+        ("🖥️ Layout : Switch Desktop Mode (Cyber-Deck / MacBook / Tiling)", "/usr/local/bin/kortex-layout next"),
+        ("🎨 Theme Studio Pro : Open Kortex Settings", "/usr/local/bin/kortex-open settings"),
+        ("🔒 Lock Session", "/usr/local/bin/kortex-open lock")
+    ]
+
+    prompt_text = "\n".join(label for label, _ in items)
+    rofi_theme = """
+    * { font: "JetBrainsMono Nerd Font 11"; }
+    window {
+        width: 480px;
+        location: northeast;
+        anchor: northeast;
+        x-offset: -14px;
+        y-offset: 36px;
+        border-radius: 14px;
+        border: 2px;
+        border-color: #00f0ff;
+        background-color: rgba(10, 12, 16, 0.94);
+        padding: 12px;
+    }
+    mainbox { background-color: transparent; spacing: 8px; }
+    inputbar {
+        background-color: rgba(18, 22, 31, 0.90);
+        border-radius: 8px;
+        padding: 8px 12px;
+        children: [ prompt, entry ];
+    }
+    prompt { text-color: #00f0ff; font-weight: bold; margin: 0 8px 0 0; }
+    entry { text-color: #ffffff; placeholder: "Control Center..."; placeholder-color: #6e7681; }
+    listview { lines: 11; background-color: transparent; spacing: 4px; }
+    element { border-radius: 8px; padding: 7px 10px; background-color: transparent; text-color: #e6edf3; }
+    element selected { background-color: rgba(0, 240, 255, 0.22); text-color: #00f0ff; border: 1px; border-color: #00f0ff; }
+    """
+
+    res = subprocess.run(
+        ["rofi", "-dmenu", "-i", "-p", "🎛 CONTROL CENTER", "-theme-str", rofi_theme],
+        input=prompt_text,
+        capture_output=True,
+        text=True
+    )
+    choice = res.stdout.strip()
+    if not choice:
+        sys.exit(0)
+
+    for label, cmd in items:
+        if choice == label:
+            if cmd == "TOGGLE_DND":
+                os.makedirs(os.path.dirname(DND_FLAG), exist_ok=True)
+                if os.path.exists(DND_FLAG):
+                    os.remove(DND_FLAG)
+                else:
+                    with open(DND_FLAG, "w") as f:
+                        f.write("1\n")
+            else:
+                subprocess.Popen(cmd, shell=True)
+            break
+
+if __name__ == "__main__":
+    main()

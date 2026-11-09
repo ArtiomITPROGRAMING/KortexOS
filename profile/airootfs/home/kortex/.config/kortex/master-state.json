@@ -49,13 +49,13 @@
   },
   "wallpaper": {
     "desktop": {
-      "path": "/usr/share/kortex/wallpapers/cyber_grid.png",
+      "path": "/usr/share/backgrounds/kortex/cyber_grid.png",
       "type": "preset"
     },
     "terminal": {
       "image_enabled": false,
-      "image_path": "",
-      "dimming": 0.35
+      "image_path": "/usr/share/backgrounds/kortex/term_tron_grid.png",
+      "dimming": 0.75
     }
   },
   "grid_widgets": {

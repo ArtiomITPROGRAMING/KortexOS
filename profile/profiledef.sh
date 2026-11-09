@@ -36,6 +36,7 @@ file_permissions=(
   ["/usr/local/bin/kortex-theme"]="0:0:755"
   ["/usr/local/bin/kortex-wallpaper"]="0:0:755"
   ["/usr/local/bin/kortex-spotlight"]="0:0:755"
+  ["/usr/local/bin/kortex-control-center"]="0:0:755"
   ["/usr/local/bin/kortex-oobe"]="0:0:755"
   ["/usr/local/bin/kortex-ctl"]="0:0:755"
   ["/usr/local/bin/kortex-grid-init"]="0:0:755"

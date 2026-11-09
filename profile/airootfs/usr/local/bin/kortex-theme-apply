@@ -2,17 +2,17 @@
 """
 KORTEX-THEME-APPLY: Unified Design, Geometry & Persistence Generator
 Transforms ~/.config/kortex/master-state.json into live synchronized configurations for:
-- Hyprland (theme.conf + live hyprctl keyword updates)
-- Waybar (style.css + SIGUSR2 reload)
+- Hyprland 0.57+ (theme.lua + live hyprctl eval & keyword updates)
+- Waybar (style.css + style-dock.css + SIGUSR2 reload)
 - Kitty (theme.conf + SIGUSR1 reload)
 - Rofi (theme.rasi)
 - GTK-3 & GTK-4 (gtk.css)
+- Qt5 & Qt6 (qt5ct/qt6ct color schemes + kdeglobals)
 """
 
 import sys
 import os
 import json
-import glob
 import subprocess
 import shutil
 
@@ -22,11 +22,18 @@ LEGACY_STATE = os.path.join(CONF_DIR, "config.json")
 BACKUP_DIR = os.path.join(CONF_DIR, "profiles")
 
 HYPR_THEME = os.path.expanduser("~/.config/hypr/theme.conf")
+HYPR_LUA_THEME = os.path.expanduser("~/.config/hypr/theme.lua")
 WAYBAR_STYLE = os.path.expanduser("~/.config/waybar/style.css")
+WAYBAR_DOCK_STYLE = os.path.expanduser("~/.config/waybar/style-dock.css")
 KITTY_THEME = os.path.expanduser("~/.config/kitty/theme.conf")
 ROFI_THEME = os.path.expanduser("~/.config/rofi/theme.rasi")
 GTK3_CSS = os.path.expanduser("~/.config/gtk-3.0/gtk.css")
 GTK4_CSS = os.path.expanduser("~/.config/gtk-4.0/gtk.css")
+QT5_CONF = os.path.expanduser("~/.config/qt5ct/qt5ct.conf")
+QT6_CONF = os.path.expanduser("~/.config/qt6ct/qt6ct.conf")
+QT5_COLORS = os.path.expanduser("~/.config/qt5ct/colors/kortex.conf")
+QT6_COLORS = os.path.expanduser("~/.config/qt6ct/colors/kortex.conf")
+KDE_GLOBALS = os.path.expanduser("~/.config/kdeglobals")
 
 DEFAULT_MASTER = {
     "system": {
@@ -37,13 +44,13 @@ DEFAULT_MASTER = {
         "power_profile": "balanced"
     },
     "interface": {
-        "philosophy": "cyberdeck", # "cyberdeck" | "macbook" | "tiling"
+        "philosophy": "cyberdeck",  # "cyberdeck" | "macbook" | "tiling"
         "dock_enabled": True,
         "gestures": True,
         "ui_sounds": True
     },
     "theme": {
-        "name": "cyber-cyan",
+        "name": "cyan",
         "palette": {
             "base_bg": "#0a0c10",
             "surface_bg": "#12161f",
@@ -58,7 +65,7 @@ DEFAULT_MASTER = {
             "rounding": 6,
             "gaps_in": 6,
             "gaps_out": 10,
-            "mode": "dual_gradient", # "solid" | "dual_gradient" | "neon_loop" | "glow_shadow"
+            "mode": "dual_gradient",  # "solid" | "dual_gradient" | "neon_loop" | "glow_shadow"
             "gradient_angle": 45,
             "glow_radius": 15,
             "glow_color": "#00f0ff66"
@@ -74,18 +81,18 @@ DEFAULT_MASTER = {
             "xray": False
         },
         "animations": {
-            "mode": "smooth" # "fast" | "smooth" | "disabled"
+            "mode": "smooth"  # "fast" | "smooth" | "disabled"
         }
     },
     "wallpaper": {
         "desktop": {
-            "path": "/usr/share/kortex/wallpapers/cyber_grid.png",
+            "path": "/usr/share/backgrounds/kortex/cyber_grid.png",
             "type": "preset"
         },
         "terminal": {
             "image_enabled": False,
-            "image_path": "",
-            "dimming": 0.35
+            "image_path": "/usr/share/backgrounds/kortex/term_tron_grid.png",
+            "dimming": 0.75
         }
     },
     "grid_widgets": {
@@ -186,7 +193,7 @@ THEME_PRESETS = {
 def clean_hex(color_str):
     if not color_str:
         return "00f0ff"
-    s = color_str.strip().lstrip("#")
+    s = str(color_str).strip().lstrip("#")
     if len(s) == 3:
         s = "".join(c * 2 for c in s)
     return s[:6] if len(s) >= 6 else "00f0ff"
@@ -195,13 +202,14 @@ def hex_to_rgb(hex_code):
     h = clean_hex(hex_code)
     return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
 
-def hex_to_rgba_str(hex_code, alpha=1.0):
-    r, g, b = hex_to_rgb(hex_code)
-    return f"rgba({r}, {g}, {b}, {alpha:.2f})"
-
-def hex_to_hypr_rgba(hex_code, alpha_hex="ff"):
-    h = clean_hex(hex_code)
-    return f"rgba({h}{alpha_hex})"
+def deep_merge(base, override):
+    res = json.loads(json.dumps(base))
+    for k, v in override.items():
+        if isinstance(v, dict) and isinstance(res.get(k), dict):
+            res[k] = deep_merge(res[k], v)
+        else:
+            res[k] = v
+    return res
 
 def load_master():
     os.makedirs(CONF_DIR, exist_ok=True)
@@ -209,16 +217,10 @@ def load_master():
         try:
             with open(MASTER_STATE, "r", encoding="utf-8") as f:
                 d = json.load(f)
-                res = DEFAULT_MASTER.copy()
-                for k, v in d.items():
-                    if isinstance(v, dict) and k in res:
-                        res[k].update(v)
-                    else:
-                        res[k] = v
-                return res
+                return deep_merge(DEFAULT_MASTER, d)
         except Exception:
             pass
-    return DEFAULT_MASTER.copy()
+    return json.loads(json.dumps(DEFAULT_MASTER))
 
 def save_master(st):
     os.makedirs(CONF_DIR, exist_ok=True)
@@ -226,10 +228,8 @@ def save_master(st):
     try:
         with open(MASTER_STATE, "w", encoding="utf-8") as f:
             json.dump(st, f, indent=2, ensure_ascii=False)
-        # Also mirror into legacy config.json for backwards compatibility
         with open(LEGACY_STATE, "w", encoding="utf-8") as f:
             json.dump(st, f, indent=2, ensure_ascii=False)
-        # Automatic persistence snapshot
         snap = os.path.join(BACKUP_DIR, "latest-persistence.json")
         shutil.copy2(MASTER_STATE, snap)
     except Exception as e:
@@ -247,153 +247,131 @@ def get_hypr_env():
                 env["HYPRLAND_INSTANCE_SIGNATURE"] = sigs[0]
     return env
 
-def hypr_keyword(key, val, env):
-    try:
-        subprocess.run(["hyprctl", "keyword", key, str(val)], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2)
-    except Exception:
-        pass
-
 def apply_hyprland(st, env):
     th = st.get("theme", {})
     pal = th.get("palette", {})
     borders = th.get("borders", {})
     glass = th.get("glass", {})
     anim = th.get("animations", {}).get("mode", "smooth")
-    gestures = st.get("interface", {}).get("gestures", True)
+    sys_cfg = st.get("system", {})
 
     b_active = clean_hex(pal.get("border_active", "#00f0ff"))
     b_inactive = clean_hex(pal.get("border_inactive", "#1b2430"))
     b_sec = clean_hex(pal.get("secondary_accent", "#0088cc"))
+    b_crit = clean_hex(pal.get("alert_critical", "#ff003c"))
     glow_col = clean_hex(pal.get("primary_accent", "#00f0ff"))
 
-    border_size = int(borders.get("size", 2))
-    rounding = int(borders.get("rounding", 6))
-    gaps_in = int(borders.get("gaps_in", 6))
-    gaps_out = int(borders.get("gaps_out", 10))
+    border_size = max(0, min(6, int(borders.get("size", 2))))
+    rounding = max(0, min(20, int(borders.get("rounding", 6))))
+    gaps_in = max(0, int(borders.get("gaps_in", 6)))
+    gaps_out = max(0, int(borders.get("gaps_out", 10)))
     mode = borders.get("mode", "dual_gradient")
-    angle = int(borders.get("gradient_angle", 45))
-    glow_radius = int(borders.get("glow_radius", 15))
+    angle = int(borders.get("gradient_angle", 45)) % 360
+    glow_radius = max(1, min(40, int(borders.get("glow_radius", 15))))
 
-    act_op = float(glass.get("opacity_active", 0.95))
-    inact_op = float(glass.get("opacity_inactive", 0.85))
+    act_op = max(0.5, min(1.0, float(glass.get("opacity_active", 0.95))))
+    inact_op = max(0.3, min(1.0, float(glass.get("opacity_inactive", 0.85))))
     blur = bool(glass.get("blur_enabled", True))
-    blur_size = int(glass.get("blur_size", 8))
-    blur_passes = int(glass.get("blur_passes", 3))
-    blur_vibrancy = float(glass.get("blur_vibrancy", 0.1696))
+    blur_size = max(1, min(20, int(glass.get("blur_size", 8))))
+    blur_passes = max(1, min(5, int(glass.get("blur_passes", 3))))
+    blur_vibrancy = max(0.0, min(1.0, float(glass.get("blur_vibrancy", 0.1696))))
     xray = bool(glass.get("xray", False))
 
-    # Border configuration string based on mode
+    kb_layout = sys_cfg.get("kb_layout", "us,ru")
+    kb_toggle = sys_cfg.get("kb_toggle", "grp:alt_shift_toggle")
+
+    # Lua active_border & keyword string
     if mode == "solid":
         col_active_str = f"rgb({b_active})"
+        lua_active_border = f'"rgb({b_active})"'
     elif mode == "dual_gradient":
         col_active_str = f"rgb({b_active}) rgb({b_sec}) {angle}deg"
+        lua_active_border = f'{{ colors = {{"rgb({b_active})", "rgb({b_sec})"}}, angle = {angle} }}'
     elif mode == "neon_loop":
-        col_active_str = f"rgb({b_active}) rgb({b_sec}) rgb({b_active}) 45deg"
-    elif mode == "glow_shadow":
+        col_active_str = f"rgb({b_active}) rgb({b_sec}) rgb({b_crit}) rgb({b_active}) {angle}deg"
+        lua_active_border = f'{{ colors = {{"rgb({b_active})", "rgb({b_sec})", "rgb({b_crit})", "rgb({b_active})"}}, angle = {angle} }}'
+    else:  # glow_shadow
         col_active_str = f"rgb({b_active})"
-    else:
-        col_active_str = f"rgb({b_active})"
+        lua_active_border = f'"rgb({b_active})"'
 
     col_inactive_str = f"rgb({b_inactive})"
-    shadow_col_str = f"rgba({glow_col}55)"
+    shadow_col_str = f"rgba({glow_col}66)"
+    glow_enabled = "true" if mode in ("glow_shadow", "neon_loop") else "false"
+    shadow_enabled = "true" if (mode in ("glow_shadow", "neon_loop") or blur) else "false"
+    blur_str = "true" if blur else "false"
+    xray_str = "true" if xray else "false"
+    anim_enabled = "false" if anim == "disabled" else "true"
+    loop_anim = "true" if mode == "neon_loop" else "false"
 
-    # Write ~/.config/hypr/theme.conf
-    os.makedirs(os.path.dirname(HYPR_THEME), exist_ok=True)
-    content = f"""# ==============================================================================
-# KORTEX-OS LIVE GENERATED THEME & GEOMETRY
-# Managed by Kortex Unified Design & Persistence Engine
-# ==============================================================================
+    os.makedirs(os.path.dirname(HYPR_LUA_THEME), exist_ok=True)
+    lua_content = f"""-- ==============================================================================
+-- KORTEX-OS LIVE GENERATED HYPRLAND 0.57+ LUA THEME
+-- Managed by Kortex Unified Design & Persistence Engine
+-- ==============================================================================
 
-# Variables
-$col_active = {col_active_str}
-$col_inactive = {col_inactive_str}
-$col_shadow = {shadow_col_str}
-
-$border_size = {border_size}
-$rounding = {rounding}
-$gaps_in = {gaps_in}
-$gaps_out = {gaps_out}
-
-$active_opacity = {act_op:.2f}
-$inactive_opacity = {inact_op:.2f}
-
-# General Layout
-general {{
-    gaps_in = $gaps_in
-    gaps_out = $gaps_out
-    border_size = $border_size
-    col.active_border = $col_active
-    col.inactive_border = $col_inactive
-    layout = dwindle
-}}
-
-# Decoration & Glassmorphism
-decoration {{
-    rounding = $rounding
-    active_opacity = $active_opacity
-    inactive_opacity = $inactive_opacity
-    
-    shadow {{
-        enabled = {'true' if mode == 'glow_shadow' or blur else 'false'}
-        range = {glow_radius}
-        render_power = 3
-        color = $col_shadow
-    }}
-
-    blur {{
-        enabled = {'true' if blur else 'false'}
-        size = {blur_size}
-        passes = {blur_passes}
-        new_optimizations = true
-        xray = {'true' if xray else 'false'}
-        vibrancy = {blur_vibrancy:.4f}
-    }}
-}}
-
-# Gestures (MacBook 3-Finger Swipe)
-gestures {{
-    workspace_swipe = {'true' if gestures else 'false'}
-    workspace_swipe_fingers = 3
-    workspace_swipe_distance = 300
-    workspace_swipe_invert = true
-    workspace_swipe_min_speed_to_force = 30
-    workspace_swipe_cancel_ratio = 0.5
-}}
-
-# Per-App Transparency & Behavior Rules
-windowrulev2 = opacity 1.0 1.0, class:^(firefox|chromium|google-chrome)$
-windowrulev2 = opacity 0.92 0.85, class:^(Code|vscodium)$
-windowrulev2 = opacity 0.90 0.80, class:^(thunar|nemo|dolphin)$
-windowrulev2 = float, class:^(kortex-settings|kortex-help|kortex-oobe)$
-windowrulev2 = center, class:^(kortex-settings|kortex-help|kortex-oobe)$
-"""
-    with open(HYPR_THEME, "w", encoding="utf-8") as f:
-        f.write(content)
-
-    try:
-        hypr_lua_theme = os.path.expanduser("~/.config/hypr/theme.lua")
-        with open(hypr_lua_theme, "w", encoding="utf-8") as lf:
-            lf.write(f"""hl.config({{
+hl.config({{
     general = {{
         border_size = {border_size},
         gaps_in = {gaps_in},
         gaps_out = {gaps_out},
         col = {{
-            active_border = "{col_active_str}",
+            active_border = {lua_active_border},
             inactive_border = "{col_inactive_str}",
         }},
     }},
     decoration = {{
         rounding = {rounding},
-        active_opacity = {active_opacity},
-        inactive_opacity = {inactive_opacity},
+        active_opacity = {act_op:.2f},
+        inactive_opacity = {inact_op:.2f},
+        shadow = {{
+            enabled = {shadow_enabled},
+            range = {glow_radius},
+            render_power = 3,
+            color = "{shadow_col_str}",
+        }},
+        glow = {{
+            enabled = {glow_enabled},
+            range = {glow_radius},
+            render_power = 3,
+            color = "{shadow_col_str}",
+        }},
+        blur = {{
+            enabled = {blur_str},
+            size = {blur_size},
+            passes = {blur_passes},
+            new_optimizations = true,
+            xray = {xray_str},
+            vibrancy = {blur_vibrancy:.4f},
+        }},
+    }},
+    animations = {{
+        enabled = {anim_enabled},
+    }},
+    input = {{
+        kb_layout = "{kb_layout}",
+        kb_options = "{kb_toggle}",
     }},
 }})
-""")
+
+hl.animation({{ leaf = "borderangle", enabled = {loop_anim}, speed = 28, bezier = "linear", style = "loop" }})
+"""
+    with open(HYPR_LUA_THEME, "w", encoding="utf-8") as lf:
+        lf.write(lua_content)
+
+    # Also write legacy theme.conf for reference
+    with open(HYPR_THEME, "w", encoding="utf-8") as f:
+        f.write(f"# Kortex Theme Snapshot\n# border_size={border_size} rounding={rounding} mode={mode}\n")
+
+    # Apply live via hyprctl eval (native Hyprland 0.57+ Lua VM)
+    try:
+        subprocess.run(
+            ["hyprctl", "eval", f"pcall(dofile, '{HYPR_LUA_THEME}')"],
+            env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=3
+        )
     except Exception:
         pass
 
-    # Single batch call for instant zero-lag IPC apply
+    # Also run keyword batch fallback
     batch_cmds = [
         f"keyword general:border_size {border_size}",
         f"keyword general:col.active_border '{col_active_str}'",
@@ -401,24 +379,18 @@ windowrulev2 = center, class:^(kortex-settings|kortex-help|kortex-oobe)$
         f"keyword general:gaps_in {gaps_in}",
         f"keyword general:gaps_out {gaps_out}",
         f"keyword decoration:rounding {rounding}",
-        f"keyword decoration:active_opacity {act_op}",
-        f"keyword decoration:inactive_opacity {inact_op}",
-        f"keyword decoration:blur:enabled {'true' if blur else 'false'}",
+        f"keyword decoration:active_opacity {act_op:.2f}",
+        f"keyword decoration:inactive_opacity {inact_op:.2f}",
+        f"keyword decoration:blur:enabled {blur_str}",
         f"keyword decoration:blur:size {blur_size}",
         f"keyword decoration:blur:passes {blur_passes}",
-        f"keyword gestures:workspace_swipe {'true' if gestures else 'false'}"
+        f"keyword decoration:blur:xray {xray_str}",
+        f"keyword decoration:blur:vibrancy {blur_vibrancy:.4f}",
+        f"keyword decoration:shadow:enabled {shadow_enabled}",
+        f"keyword decoration:shadow:range {glow_radius}",
     ]
-    if anim == "disabled":
-        batch_cmds.append("keyword animations:enabled false")
-    else:
-        batch_cmds.append("keyword animations:enabled true")
-        speed = 2 if anim == "fast" else 4
-        batch_cmds.append(f"keyword animations:animation 'windows, 1, {speed}, default'")
-        batch_cmds.append(f"keyword animations:animation 'workspaces, 1, {speed}, default'")
-
-    batch_str = " ; ".join(batch_cmds)
     try:
-        subprocess.run(["hyprctl", "--batch", batch_str], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=3)
+        subprocess.run(["hyprctl", "--batch", " ; ".join(batch_cmds)], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=3)
     except Exception:
         pass
 
@@ -435,21 +407,20 @@ def apply_waybar(st):
     sec = pal.get("secondary_accent", "#0088cc")
     crit = pal.get("alert_critical", "#ff003c")
     b_act = pal.get("border_active", "#00f0ff")
-    
+
     rnd = int(borders.get("rounding", 6))
     op_panel = float(glass.get("opacity_panels", 0.90))
 
-    # Frosted glass background for waybar
     r, g, b = hex_to_rgb(base)
     bg_rgba = f"rgba({r}, {g}, {b}, {op_panel:.2f})"
     r_s, g_s, b_s = hex_to_rgb(surf)
     surf_rgba = f"rgba({r_s}, {g_s}, {b_s}, {min(1.0, op_panel + 0.05):.2f})"
 
-    mac_island = """
+    mac_island = f"""
     margin: 6px 12px 0px 12px;
-    border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    border-radius: {max(10, rnd)}px;
+    border: 1px solid {b_act};
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
 """ if phil == "macbook" else f"""
     border-bottom: 2px solid {b_act};
     margin: 0px;
@@ -477,32 +448,32 @@ window#waybar {{
     transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }}
 
-#custom-logo {{
+#custom-menu, #custom-logo {{
     background: {pri};
     color: {base};
     padding: 0 10px;
-    margin: 3px 6px;
+    margin: 3px 4px;
     border-radius: {rnd}px;
     font-weight: 900;
     letter-spacing: 1px;
 }}
 
-#custom-layout {{
+#custom-layout, #custom-spotlight, #custom-control-center, #custom-guide, #custom-store, #custom-ai, #custom-settings, #custom-guard {{
     background: {surf_rgba};
     color: {pri};
-    border: 1px solid {pri};
+    border: 1px solid {sec};
     border-radius: {rnd}px;
     padding: 0 8px;
-    margin: 3px 4px;
+    margin: 3px 2px;
 }}
 
 #custom-win-min, #custom-win-max, #custom-win-close {{
     background: {surf_rgba};
-    color: #8b949e;
+    color: #c9d1d9;
     border-radius: {rnd}px;
     padding: 0 7px;
     margin: 3px 2px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.14);
 }}
 
 #custom-win-close:hover {{
@@ -516,7 +487,7 @@ window#waybar {{
     color: #ffffff;
 }}
 
-#workspaces button {{
+#workspaces button, #taskbar button {{
     padding: 0 8px;
     margin: 3px 2px;
     color: #8b949e;
@@ -524,18 +495,17 @@ window#waybar {{
     background: transparent;
 }}
 
-#workspaces button.active {{
+#workspaces button.active, #taskbar button.active {{
     color: {base};
     background: {pri};
-    box-shadow: 0 0 10px {pri};
 }}
 
-#clock, #battery, #cpu, #memory, #pulseaudio, #network, #custom-plugins, #custom-help {{
+#clock, #battery, #cpu, #memory, #disk, #pulseaudio, #network, #custom-plugins, #custom-help {{
     background: {surf_rgba};
     color: {pri};
     border-radius: {rnd}px;
-    padding: 0 10px;
-    margin: 3px 3px;
+    padding: 0 9px;
+    margin: 3px 2px;
     border: 1px solid rgba(255, 255, 255, 0.08);
 }}
 
@@ -543,25 +513,54 @@ window#waybar {{
     color: #ffffff;
     border-color: {pri};
 }}
-
-#custom-plugins {{
-    color: {sec};
-}}
 """
     os.makedirs(os.path.dirname(WAYBAR_STYLE), exist_ok=True)
     with open(WAYBAR_STYLE, "w", encoding="utf-8") as f:
         f.write(css)
 
-    # Signal Waybar to reload
+    dock_css = f"""/* KORTEX-OS MACBOOK PRO INTERACTIVE GLASS DOCK */
+* {{
+    border: none;
+    font-family: "JetBrainsMono Nerd Font", "JetBrains Mono", monospace;
+    font-size: 12px;
+    font-weight: 800;
+}}
+window#waybar {{
+    background: {bg_rgba};
+    border: 2px solid {b_act};
+    border-radius: {max(14, rnd)}px;
+    margin: 0px 0px 8px 0px;
+    padding: 4px 10px;
+}}
+#custom-dock-launchpad, #custom-dock-term, #custom-dock-browser, #custom-dock-files,
+#custom-dock-gram, #custom-dock-ai, #custom-dock-music, #custom-dock-store,
+#custom-dock-settings, #custom-dock-ctrl, #custom-dock-install {{
+    background: {surf_rgba};
+    color: {pri};
+    border: 1px solid {sec};
+    border-radius: {max(8, rnd)}px;
+    padding: 4px 12px;
+    margin: 4px 4px;
+}}
+#custom-dock-launchpad:hover, #custom-dock-term:hover, #custom-dock-browser:hover,
+#custom-dock-files:hover, #custom-dock-gram:hover, #custom-dock-ai:hover,
+#custom-dock-music:hover, #custom-dock-store:hover, #custom-dock-settings:hover,
+#custom-dock-ctrl:hover, #custom-dock-install:hover {{
+    background: {pri};
+    color: {base};
+}}
+"""
+    with open(WAYBAR_DOCK_STYLE, "w", encoding="utf-8") as f:
+        f.write(dock_css)
+
     subprocess.run("pkill -SIGUSR2 waybar 2>/dev/null || true", shell=True)
 
 def apply_kitty(st):
     th = st.get("theme", {})
     pal = th.get("palette", {})
-    glass = st.get("theme", {}).get("glass", {})
+    glass = th.get("glass", {})
 
     base = pal.get("base_bg", "#0a0c10")
-    surf = pal.get("surface_bg", "#12161f")
     pri = pal.get("primary_accent", "#00f0ff")
     sec = pal.get("secondary_accent", "#0088cc")
     crit = pal.get("alert_critical", "#ff003c")
@@ -577,35 +576,20 @@ cursor_text_color {base}
 selection_background {sec}
 selection_foreground #ffffff
 
-# Black
 color0 {base}
 color8 #484f58
-
-# Red
 color1 {crit}
 color9 #ff6b81
-
-# Green
 color2 #00ff41
 color10 #7bed9f
-
-# Yellow
 color3 #ffb000
 color11 #eccc68
-
-# Blue / Cyan
 color4 {sec}
 color12 {pri}
-
-# Magenta
 color5 #b537f2
 color13 #e056fd
-
-# Cyan
 color6 {pri}
 color14 #70a1ff
-
-# White
 color7 #c9d1d9
 color15 #ffffff
 """
@@ -613,7 +597,6 @@ color15 #ffffff
     with open(KITTY_THEME, "w", encoding="utf-8") as f:
         f.write(kitty_theme_content)
 
-    # Signal kitty instances
     subprocess.run("kill -SIGUSR1 $(pidof kitty) 2>/dev/null || true", shell=True)
 
 def apply_rofi(st):
@@ -626,6 +609,8 @@ def apply_rofi(st):
     surf = pal.get("surface_bg", "#12161f")
     pri = pal.get("primary_accent", "#00f0ff")
     sec = pal.get("secondary_accent", "#0088cc")
+    crit = pal.get("alert_critical", "#ff003c")
+    b_act = pal.get("border_active", "#00f0ff")
     rnd = int(borders.get("rounding", 6))
     op = float(glass.get("opacity_panels", 0.90))
 
@@ -642,9 +627,10 @@ def apply_rofi(st):
     bg-surface: {surf_rgba};
     accent-pri: {pri};
     accent-sec: {sec};
+    alert-crit: {crit};
     text-main: #ffffff;
     text-dim: #8b949e;
-    border-col: {pri};
+    border-col: {b_act};
     rounding: {rnd}px;
 }}
 """
@@ -658,12 +644,17 @@ def apply_gtk(st):
     base = pal.get("base_bg", "#0a0c10")
     surf = pal.get("surface_bg", "#12161f")
     pri = pal.get("primary_accent", "#00f0ff")
+    sec = pal.get("secondary_accent", "#0088cc")
+    crit = pal.get("alert_critical", "#ff003c")
 
     gtk_css = f"""@define-color theme_bg_color {base};
-@define-color theme_base_color {base};
+@define-color theme_base_color {surf};
 @define-color theme_selected_bg_color {pri};
 @define-color theme_selected_fg_color {base};
 @define-color theme_fg_color #e6edf3;
+@define-color theme_text_color #e6edf3;
+@define-color error_color {crit};
+@define-color warning_color {sec};
 @define-color theme_view_hover_decoration_color {pri};
 """
     for p in [GTK3_CSS, GTK4_CSS]:
@@ -674,16 +665,53 @@ def apply_gtk(st):
         except Exception:
             pass
 
+def apply_qt(st):
+    th = st.get("theme", {})
+    pal = th.get("palette", {})
+    base = "#" + clean_hex(pal.get("base_bg", "#0a0c10"))
+    surf = "#" + clean_hex(pal.get("surface_bg", "#12161f"))
+    pri = "#" + clean_hex(pal.get("primary_accent", "#00f0ff"))
+    sec = "#" + clean_hex(pal.get("secondary_accent", "#0088cc"))
+    inact = "#" + clean_hex(pal.get("border_inactive", "#1b2430"))
+
+    qt_scheme = f"""[ColorScheme]
+active_colors=#ffe6edf3, {surf}, {surf}, {inact}, #ff050608, {inact}, #ffe6edf3, #ffffffff, #ffe6edf3, {base}, {base}, #ff000000, {pri}, {base}, {sec}, {pri}, {surf}, #ff000000, {surf}, #ffe6edf3, #80e6edf3
+disabled_colors=#ff6e7681, {surf}, {surf}, {inact}, #ff050608, {inact}, #ff6e7681, #ffffffff, #ff6e7681, {base}, {base}, #ff000000, {inact}, #ff6e7681, {sec}, {pri}, {surf}, #ff000000, {surf}, #ff6e7681, #806e7681
+inactive_colors=#ff8b949e, {surf}, {surf}, {inact}, #ff050608, {inact}, #ff8b949e, #ffffffff, #ff8b949e, {base}, {base}, #ff000000, {sec}, {base}, {sec}, {pri}, {surf}, #ff000000, {surf}, #ff8b949e, #808b949e
+"""
+    for cpath, cfg_path in [(QT5_COLORS, QT5_CONF), (QT6_COLORS, QT6_CONF)]:
+        os.makedirs(os.path.dirname(cpath), exist_ok=True)
+        try:
+            with open(cpath, "w", encoding="utf-8") as f:
+                f.write(qt_scheme)
+            with open(cfg_path, "w", encoding="utf-8") as f:
+                f.write(f"[Appearance]\ncolor_scheme_path={cpath}\ncustom_palette=true\nstyle=Fusion\n")
+        except Exception:
+            pass
+
+    r_b, g_b, b_b = hex_to_rgb(base)
+    r_s, g_s, b_s = hex_to_rgb(surf)
+    r_p, g_p, b_p = hex_to_rgb(pri)
+    kde_content = f"""[Colors:Window]
+BackgroundNormal={r_b},{g_b},{b_b}
+BackgroundAlternate={r_s},{g_s},{b_s}
+ForegroundNormal=230,237,243
+DecorationFocus={r_p},{g_p},{b_p}
+
+[Colors:Selection]
+BackgroundNormal={r_p},{g_p},{b_p}
+ForegroundNormal={r_b},{g_b},{b_b}
+"""
+    try:
+        os.makedirs(os.path.dirname(KDE_GLOBALS), exist_ok=True)
+        with open(KDE_GLOBALS, "w", encoding="utf-8") as f:
+            f.write(kde_content)
+    except Exception:
+        pass
+
 def main():
     st = load_master()
 
-    # Allow CLI overrides:
-    # --theme <cyan|matrix|amber|mono|crimson>
-    # --preset <name>
-    # --layout <cyberdeck|macbook|tiling>
-    # --accent <hex>
-    # --opacity <0.5-1.0>
-    # --blur <true|false>
     args = sys.argv[1:]
     idx = 0
     while idx < len(args):
@@ -693,7 +721,8 @@ def main():
             if t_key in THEME_PRESETS:
                 p = THEME_PRESETS[t_key]
                 st["theme"]["name"] = t_key
-                st["theme"]["palette"].update(p)
+                for k_col in ("base_bg", "surface_bg", "primary_accent", "secondary_accent", "border_active", "border_inactive", "alert_critical"):
+                    st["theme"]["palette"][k_col] = p[k_col]
             idx += 2
         elif a in ("--list", "-v", "list"):
             print("Available KortexOS Themes:")
@@ -713,14 +742,20 @@ def main():
             idx += 2
         elif a in ("--opacity", "-o") and idx + 1 < len(args):
             val = float(args[idx+1])
-            if val > 1.0: val /= 100.0
+            if val > 1.0:
+                val /= 100.0
             st["theme"]["glass"]["opacity_active"] = max(0.5, min(1.0, val))
             idx += 2
         elif a in ("--blur", "-b") and idx + 1 < len(args):
             st["theme"]["glass"]["blur_enabled"] = args[idx+1].lower() in ("1", "true", "yes", "on")
             idx += 2
+        elif a in ("--border-mode",) and idx + 1 < len(args):
+            m = args[idx+1].lower()
+            if m in ("solid", "dual_gradient", "neon_loop", "glow_shadow"):
+                st["theme"]["borders"]["mode"] = m
+            idx += 2
         elif a in ("--reset",):
-            st = DEFAULT_MASTER.copy()
+            st = json.loads(json.dumps(DEFAULT_MASTER))
             idx += 1
         else:
             idx += 1
@@ -733,8 +768,9 @@ def main():
     apply_kitty(st)
     apply_rofi(st)
     apply_gtk(st)
+    apply_qt(st)
 
-    print("[+] KORTEX THEME ENGINE: Live configurations synchronized across Hyprland, Waybar, Kitty, Rofi & GTK.")
+    print("[+] KORTEX THEME ENGINE: Live configurations synchronized across Hyprland, Waybar, Kitty, Rofi, GTK & Qt.")
 
 if __name__ == "__main__":
     main()
