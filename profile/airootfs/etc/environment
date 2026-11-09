@@ -1,1 +1,3 @@
-HYPRLAND_CONFIG=/home/kortex/.config/hypr/hyprland.conf
+QT_QPA_PLATFORM="wayland;xcb"
+GDK_BACKEND="wayland,x11"
+MOZ_ENABLE_WAYLAND=1

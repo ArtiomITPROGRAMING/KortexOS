@@ -1,45 +1,7 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# KORTEX-OS HYPRLAND MASTER BINARY WRAPPER
-# Guarantees native Hyprland config load and removes any hyprland.lua
+# KORTEX-OS HYPRLAND ALIAS
+# Directs commands safely through start-hyprland
 # ==============================================================================
 
-# Strictly delete hyprland.lua everywhere
-rm -f "$HOME/.config/hypr/hyprland.lua" \
-      /home/kortex/.config/hypr/hyprland.lua \
-      /etc/skel/.config/hypr/hyprland.lua \
-      /root/.config/hypr/hyprland.lua 2>/dev/null || true
-
-mkdir -p "$HOME/.config/hypr" /home/kortex/.config/hypr 2>/dev/null || true
-
-# Clean stale sockets and crash logs
-rm -rf "$HOME/.cache/hyprland"* /run/user/$(id -u)/hypr/* 2>/dev/null || true
-
-# Auto-detect VM/Hypervisor environment and guarantee software renderer fallback
-if systemd-detect-virt --quiet 2>/dev/null; then
-    export LIBGL_ALWAYS_SOFTWARE=1
-    export WLR_RENDERER_ALLOW_SOFTWARE=1
-    export WLR_NO_HARDWARE_CURSORS=1
-fi
-
-cfg="/home/kortex/.config/hypr/hyprland.conf"
-if [ ! -f "$cfg" ]; then
-    cfg="$HOME/.config/hypr/hyprland.conf"
-fi
-
-export HYPRLAND_CONFIG="$cfg"
-
-# Always ensure -c config is passed to avoid Safe Mode or default config search
-has_conf=0
-for arg in "$@"; do
-    if [[ "$arg" == "-c" || "$arg" == "--config" ]]; then
-        has_conf=1
-        break
-    fi
-done
-
-if [ "$has_conf" -eq 0 ]; then
-    exec /usr/bin/Hyprland -c "$cfg" "$@"
-else
-    exec /usr/bin/Hyprland "$@"
-fi
+exec /usr/local/bin/start-hyprland "$@"

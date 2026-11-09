@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=KortexGram
+Comment=Secure Real-Time E2EE Messenger
+Exec=kortex-gram
+Icon=telegram
+Terminal=false
+Type=Application
+Categories=Network;InstantMessaging;

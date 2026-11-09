@@ -26,7 +26,7 @@ fi
 # Ensure /home/kortex exists and has full skel files
 mkdir -p /home/kortex/.config/kortex/plugins
 cp -a /etc/skel/. /home/kortex/ 2>/dev/null || true
-rm -f /home/kortex/.config/hypr/hyprland.lua /etc/skel/.config/hypr/hyprland.lua /root/.config/hypr/hyprland.lua 2>/dev/null || true
+rm -f /home/kortex/.config/hypr/hyprland.conf /etc/skel/.config/hypr/hyprland.conf /root/.config/hypr/hyprland.conf 2>/dev/null || true
 
 # Fix permissions
 chown -R 1000:1000 /home/kortex

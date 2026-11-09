@@ -62,6 +62,7 @@ file_permissions=(
   ["/usr/local/bin/kortex-vault"]="0:0:755"
   ["/usr/local/bin/kortex-menu"]="0:0:755"
   ["/usr/local/bin/kortex-store"]="0:0:755"
+  ["/usr/local/bin/kortex-gram"]="0:0:755"
   ["/usr/local/bin/kortex-launch"]="0:0:755"
   ["/usr/local/bin/start-hyprland"]="0:0:755"
   ["/usr/local/bin/Hyprland"]="0:0:755"

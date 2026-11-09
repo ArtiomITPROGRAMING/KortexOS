@@ -370,6 +370,29 @@ windowrulev2 = center, class:^(kortex-settings|kortex-help|kortex-oobe)$
     with open(HYPR_THEME, "w", encoding="utf-8") as f:
         f.write(content)
 
+    try:
+        hypr_lua_theme = os.path.expanduser("~/.config/hypr/theme.lua")
+        with open(hypr_lua_theme, "w", encoding="utf-8") as lf:
+            lf.write(f"""hl.config({{
+    general = {{
+        border_size = {border_size},
+        gaps_in = {gaps_in},
+        gaps_out = {gaps_out},
+        col = {{
+            active_border = "{col_active_str}",
+            inactive_border = "{col_inactive_str}",
+        }},
+    }},
+    decoration = {{
+        rounding = {rounding},
+        active_opacity = {active_opacity},
+        inactive_opacity = {inactive_opacity},
+    }},
+}})
+""")
+    except Exception:
+        pass
+
     # Single batch call for instant zero-lag IPC apply
     batch_cmds = [
         f"keyword general:border_size {border_size}",

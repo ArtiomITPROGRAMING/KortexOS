@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+PORT=8765
+if ! pgrep -f "http.server 8765" >/dev/null 2>&1; then
+    python3 -m http.server 8765 --directory /usr/share/kortex-gram/web --bind 127.0.0.1 >/dev/null 2>&1 &
+    sleep 0.5
+fi
+exec firefox --new-window "http://127.0.0.1:8765" "$@"

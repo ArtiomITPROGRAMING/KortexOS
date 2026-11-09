@@ -28,3 +28,6 @@ auth_users*.json
 kortex_gram/
 *.tar.gz
 tests/test_kortex_gram_live.py
+tools/rufus.exe
+out/kortexos-2026.*.iso
+
