@@ -14,6 +14,20 @@
   ],
   "apps": [
     {
+      "id": "kortex-gram",
+      "name": "KortexGram Messenger",
+      "category": "Communication",
+      "description": "Telegram-inspired real-time cloud messenger with Firebase and zero-knowledge End-to-End Encryption (AES-256-GCM + X25519 Curve25519).",
+      "version": "1.0.0",
+      "icon": "💬",
+      "type": "bundle",
+      "package": "kortex-gram",
+      "install_cmd": "curl -sL https://github.com/ArtiomITPROGRAMING/KortexGram/releases/download/v1.0.0/kortex-gram-v1.0.0-linux.tar.gz | sudo tar -xz -C /",
+      "launch_cmd": "/usr/local/bin/kortex-gram",
+      "homepage": "https://github.com/ArtiomITPROGRAMING/KortexGram",
+      "size": "10 MB"
+    },
+    {
       "id": "kortex-music",
       "name": "Kortex Music & Synthwave Radio",
       "category": "Audio & Music",

@@ -1,0 +1,373 @@
+rules_version = '2';
+
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: /users/{userId}
+// Document ID: Firebase Auth UID matching the authenticated user
+// Fields:
+//   - lastSync: number | timestamp (required, > 0) - Timestamp of last sync in ms or server timestamp
+//   - deviceModel: string (required, 1-100 chars) - Hardware device model name (e.g., Pixel 8)
+//   - playlistCount: number (required, >= 0, <= 100000) - Total number of synced playlists
+//   - favorites: list<number> (optional, <= 20000 items) - List of favorited song IDs
+//   - uid: string (optional, 1-128 chars) - Auth UID if mirrored in document
+//   - userId: string (optional, 1-128 chars) - Auth UID if mirrored in document
+//
+// Collection: /users/{userId}/playlists/{playlistId}
+// Document ID: Unique playlist identifier string
+// Fields:
+//   - id: string (required, immutable, 1-128 chars) - Must match playlistId
+//   - name: string (required, 1-150 chars) - Display name of the playlist
+//   - songIds: list<number> (optional, <= 10000 items) - Ordered song IDs in the playlist
+//   - createdAt: number | timestamp (optional, immutable, > 0) - Creation timestamp in ms
+//   - customCoverUri: string (optional, <= 1000 chars) - Local or remote cover art URI
+//   - isSystemFavorites: bool (optional) - True if representing user's favorite tracks
+//   - updatedAt: number | timestamp (optional, > 0) - Last modification timestamp
+//
+// Collection: /themes/{themeId}
+// Document ID: Unique theme identifier (e.g., 'emerald-matrix')
+// Fields:
+//   - authorId: string (required, immutable, 1-128 chars) - UID of creating user (request.auth.uid)
+//   - name: string (required, 1-100 chars) - Display title of the theme
+//   - id: string (optional, 1-128 chars) - Slug or identifier of the theme
+//   - author: string (optional, <= 100 chars) - Display author name
+//   - version: string (optional, <= 30 chars) - Version tag (e.g., '1.0.0')
+//   - description: string (optional, <= 1500 chars) - Theme overview
+//   - isDark: bool (optional) - Dark mode flag
+//   - previewAccentHex: string (optional, <= 30 chars) - Accent color hex code
+//   - previewColors: list<string> (optional, <= 20 items) - Palette preview swatches
+//   - colors: map (optional) - Detailed hex color scheme mapping
+//   - downloadUrl: string (optional, <= 1000 chars) - URL to downloadable theme file (.thm)
+//   - rawJsonUrl: string (optional, <= 1000 chars) - Direct link to JSON definition
+//   - backgroundStyle: string (optional, <= 50 chars) - Background style token
+//   - fontFamily: string (optional, <= 50 chars) - Font styling token
+//   - iconStyle: string (optional, <= 50 chars) - App icon style token
+//   - playerLayout: string (optional, <= 50 chars) - Music player UI layout token
+//   - category: string (optional, <= 50 chars) - Theme category identifier
+//   - categoryLabel: string (optional, <= 100 chars) - Localized category label
+//   - tags: list<string> (optional, <= 20 items) - Searchable discovery tags
+//   - likesCount: number (optional, >= 0) - Community likes counter
+//   - rating: number (optional, >= 0) - User rating score
+//   - minAppVersion: number (optional, >= 1) - Minimum supported app version
+//   - creatorProfile: string (optional, <= 500 chars) - Optional creator link/info
+//   - createdAt: number | timestamp (optional, immutable, > 0) - Creation timestamp
+//   - updatedAt: number | timestamp (optional, > 0) - Last update timestamp
+//
+// Collection: /kortex_gram_users/{userId}
+// Document ID: Firebase Auth UID matching the authenticated user
+// Fields:
+//   - uid: string (required, immutable) - Must match userId
+//   - username: string (required, 3-32 chars) - Unique username handle
+//   - displayName: string (required, 1-64 chars) - Public display name
+//   - publicKey: string (required, 32-128 chars) - Base64-encoded X25519 public ECDH key
+//   - lastSeen: number | timestamp (required, > 0) - Last active timestamp
+//   - createdAt: number | timestamp (required, immutable, > 0) - Account registration timestamp
+//
+// Collection: /kortex_gram_chats/{chatId}
+// Document ID: Unique chat identifier string
+// Fields:
+//   - id: string (required, immutable) - Must match chatId
+//   - participants: list<string> (required, 2-50 items) - Member user UIDs
+//   - createdAt: number | timestamp (required, immutable, > 0) - Chat creation timestamp
+//   - updatedAt: number | timestamp (required, > 0) - Last activity timestamp
+//   - lastMessage: map (optional) - Summary of latest message (senderId, ciphertext, timestamp, optional iv, tag)
+//
+// Collection: /kortex_gram_chats/{chatId}/messages/{messageId}
+// Document ID: Unique message identifier string
+// Fields:
+//   - id: string (required, immutable) - Must match messageId
+//   - chatId: string (required, immutable) - Must match parent chatId
+//   - senderId: string (required, immutable, 1-128 chars) - Must match request.auth.uid on create
+//   - ciphertext: string (required, 1-65536 chars) - Base64-encoded AES-256-GCM ciphertext
+//   - iv: string (required, 1-128 chars) - Base64-encoded initialization vector
+//   - tag: string (optional, 1-128 chars) - Base64-encoded GCM authentication tag
+//   - timestamp: number | timestamp (required, immutable, > 0) - Message timestamp
+//   - status: string (required, in ['sent', 'delivered', 'read']) - Message status
+//
+// ===============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function hasAll(data, fields) {
+      return data.keys().hasAll(fields);
+    }
+
+    function hasOnly(data, fields) {
+      return data.keys().hasOnly(fields);
+    }
+
+    function isValidTimestampOrNumber(val) {
+      return (val is number && val > 0) || val is timestamp;
+    }
+
+    function isChatParticipant(chatId) {
+      return isAuthenticated() &&
+             request.auth.uid in get(/databases/$(database)/documents/kortex_gram_chats/$(chatId)).data.participants;
+    }
+
+    // ===============================================================
+    // Domain Validators (Applied to both create and update)
+    // ===============================================================
+
+    function isValidUserMetadata(data, userId) {
+      let allowedFields = ['lastSync', 'deviceModel', 'playlistCount', 'favorites', 'uid', 'userId'];
+      let requiredFields = ['lastSync', 'deviceModel', 'playlistCount'];
+
+      return hasAll(data, requiredFields) &&
+             hasOnly(data, allowedFields) &&
+             isValidTimestampOrNumber(data.lastSync) &&
+             data.deviceModel is string &&
+             data.deviceModel.size() > 0 &&
+             data.deviceModel.size() <= 100 &&
+             data.playlistCount is number &&
+             data.playlistCount >= 0 &&
+             data.playlistCount <= 100000 &&
+             (!('favorites' in data) || (data.favorites is list && data.favorites.size() <= 20000)) &&
+             (!('uid' in data) || (data.uid is string && data.uid == userId)) &&
+             (!('userId' in data) || (data.userId is string && data.userId == userId));
+    }
+
+    function isValidPlaylist(data, playlistId) {
+      let allowedFields = ['id', 'name', 'songIds', 'createdAt', 'customCoverUri', 'isSystemFavorites', 'updatedAt'];
+      let requiredFields = ['id', 'name'];
+
+      return hasAll(data, requiredFields) &&
+             hasOnly(data, allowedFields) &&
+             data.id is string &&
+             data.id.size() > 0 &&
+             data.id.size() <= 128 &&
+             data.id == playlistId &&
+             data.name is string &&
+             data.name.size() > 0 &&
+             data.name.size() <= 150 &&
+             (!('songIds' in data) || (data.songIds is list && data.songIds.size() <= 10000)) &&
+             (!('createdAt' in data) || isValidTimestampOrNumber(data.createdAt)) &&
+             (!('customCoverUri' in data) || (data.customCoverUri is string && data.customCoverUri.size() <= 1000)) &&
+             (!('isSystemFavorites' in data) || (data.isSystemFavorites is bool)) &&
+             (!('updatedAt' in data) || isValidTimestampOrNumber(data.updatedAt));
+    }
+
+    function isValidTheme(data) {
+      let allowedFields = [
+        'id', 'name', 'author', 'authorId', 'version', 'description',
+        'isDark', 'previewAccentHex', 'previewColors', 'colors',
+        'downloadUrl', 'rawJsonUrl', 'backgroundStyle', 'fontFamily',
+        'iconStyle', 'playerLayout', 'category', 'categoryLabel',
+        'tags', 'likesCount', 'rating', 'minAppVersion', 'creatorProfile',
+        'createdAt', 'updatedAt'
+      ];
+      let requiredFields = ['authorId', 'name'];
+
+      return hasAll(data, requiredFields) &&
+             hasOnly(data, allowedFields) &&
+             data.authorId is string &&
+             data.authorId.size() > 0 &&
+             data.authorId.size() <= 128 &&
+             data.name is string &&
+             data.name.size() > 0 &&
+             data.name.size() <= 100 &&
+             (!('id' in data) || (data.id is string && data.id.size() > 0 && data.id.size() <= 128)) &&
+             (!('author' in data) || (data.author is string && data.author.size() <= 100)) &&
+             (!('version' in data) || (data.version is string && data.version.size() <= 30)) &&
+             (!('description' in data) || (data.description is string && data.description.size() <= 1500)) &&
+             (!('isDark' in data) || (data.isDark is bool)) &&
+             (!('previewAccentHex' in data) || (data.previewAccentHex is string && data.previewAccentHex.size() <= 30)) &&
+             (!('previewColors' in data) || (data.previewColors is list && data.previewColors.size() <= 20)) &&
+             (!('colors' in data) || (data.colors is map)) &&
+             (!('downloadUrl' in data) || (data.downloadUrl is string && data.downloadUrl.size() <= 1000)) &&
+             (!('rawJsonUrl' in data) || (data.rawJsonUrl is string && data.rawJsonUrl.size() <= 1000)) &&
+             (!('backgroundStyle' in data) || (data.backgroundStyle is string && data.backgroundStyle.size() <= 50)) &&
+             (!('fontFamily' in data) || (data.fontFamily is string && data.fontFamily.size() <= 50)) &&
+             (!('iconStyle' in data) || (data.iconStyle is string && data.iconStyle.size() <= 50)) &&
+             (!('playerLayout' in data) || (data.playerLayout is string && data.playerLayout.size() <= 50)) &&
+             (!('category' in data) || (data.category is string && data.category.size() <= 50)) &&
+             (!('categoryLabel' in data) || (data.categoryLabel is string && data.categoryLabel.size() <= 100)) &&
+             (!('tags' in data) || (data.tags is list && data.tags.size() <= 20)) &&
+             (!('likesCount' in data) || (data.likesCount is number && data.likesCount >= 0)) &&
+             (!('rating' in data) || (data.rating is number && data.rating >= 0)) &&
+             (!('minAppVersion' in data) || (data.minAppVersion is number && data.minAppVersion >= 1)) &&
+             (!('creatorProfile' in data) || (data.creatorProfile is string && data.creatorProfile.size() <= 500)) &&
+             (!('createdAt' in data) || isValidTimestampOrNumber(data.createdAt)) &&
+             (!('updatedAt' in data) || isValidTimestampOrNumber(data.updatedAt));
+    }
+
+    function isValidKortexGramUser(data, userId) {
+      let allowedFields = ['uid', 'username', 'displayName', 'publicKey', 'lastSeen', 'createdAt'];
+      let requiredFields = ['uid', 'username', 'displayName', 'publicKey', 'lastSeen', 'createdAt'];
+
+      return hasAll(data, requiredFields) &&
+             hasOnly(data, allowedFields) &&
+             data.uid is string &&
+             data.uid == userId &&
+             data.username is string &&
+             data.username.size() >= 3 &&
+             data.username.size() <= 32 &&
+             data.displayName is string &&
+             data.displayName.size() >= 1 &&
+             data.displayName.size() <= 64 &&
+             data.publicKey is string &&
+             data.publicKey.size() >= 32 &&
+             data.publicKey.size() <= 128 &&
+             isValidTimestampOrNumber(data.lastSeen) &&
+             isValidTimestampOrNumber(data.createdAt);
+    }
+
+    function isValidLastMessage(msg) {
+      let allowedFields = ['senderId', 'ciphertext', 'timestamp', 'iv', 'tag'];
+      let requiredFields = ['senderId', 'ciphertext', 'timestamp'];
+
+      return msg is map &&
+             hasAll(msg, requiredFields) &&
+             hasOnly(msg, allowedFields) &&
+             msg.senderId is string &&
+             msg.senderId.size() > 0 &&
+             msg.senderId.size() <= 128 &&
+             msg.ciphertext is string &&
+             msg.ciphertext.size() > 0 &&
+             msg.ciphertext.size() <= 65536 &&
+             isValidTimestampOrNumber(msg.timestamp) &&
+             (!('iv' in msg) || (msg.iv is string && msg.iv.size() > 0 && msg.iv.size() <= 128)) &&
+             (!('tag' in msg) || (msg.tag is string && msg.tag.size() > 0 && msg.tag.size() <= 128));
+    }
+
+    function isValidKortexGramChat(data, chatId) {
+      let allowedFields = ['id', 'participants', 'createdAt', 'updatedAt', 'lastMessage'];
+      let requiredFields = ['id', 'participants', 'createdAt', 'updatedAt'];
+
+      return hasAll(data, requiredFields) &&
+             hasOnly(data, allowedFields) &&
+             data.id is string &&
+             data.id == chatId &&
+             data.participants is list &&
+             data.participants.size() >= 2 &&
+             data.participants.size() <= 50 &&
+             isValidTimestampOrNumber(data.createdAt) &&
+             isValidTimestampOrNumber(data.updatedAt) &&
+             (!('lastMessage' in data) || data.lastMessage == null || (data.lastMessage is map && (data.lastMessage.keys().size() == 0 || isValidLastMessage(data.lastMessage))));
+    }
+
+    function isValidKortexGramMessage(data, chatId, messageId) {
+      let allowedFields = ['id', 'chatId', 'senderId', 'ciphertext', 'iv', 'tag', 'timestamp', 'status'];
+      let requiredFields = ['id', 'chatId', 'senderId', 'ciphertext', 'iv', 'timestamp', 'status'];
+
+      return hasAll(data, requiredFields) &&
+             hasOnly(data, allowedFields) &&
+             data.id is string &&
+             data.id == messageId &&
+             data.chatId is string &&
+             data.chatId == chatId &&
+             data.senderId is string &&
+             data.senderId.size() > 0 &&
+             data.senderId.size() <= 128 &&
+             data.ciphertext is string &&
+             data.ciphertext.size() > 0 &&
+             data.ciphertext.size() <= 65536 &&
+             data.iv is string &&
+             data.iv.size() > 0 &&
+             data.iv.size() <= 128 &&
+             (!('tag' in data) || (data.tag is string && data.tag.size() > 0 && data.tag.size() <= 128)) &&
+             isValidTimestampOrNumber(data.timestamp) &&
+             data.status is string &&
+             data.status in ['sent', 'delivered', 'read'];
+    }
+
+    // ===============================================================
+    // Root Match & Collections
+    // ===============================================================
+
+    // Default Deny: All unspecified paths are closed by default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Existing: User metadata collection
+    match /users/{userId} {
+      allow read, delete: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUserMetadata(request.resource.data, userId);
+      allow update: if isOwner(userId) && isValidUserMetadata(request.resource.data, userId);
+
+      // Subcollection: User playlists
+      match /playlists/{playlistId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidPlaylist(request.resource.data, playlistId);
+        allow update: if isOwner(userId) &&
+                         isValidPlaylist(request.resource.data, playlistId) &&
+                         request.resource.data.id == resource.data.id &&
+                         (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt);
+      }
+    }
+
+    // Existing: Community theme showcase collection
+    match /themes/{themeId} {
+      allow read: if true;
+      allow create: if isAuthenticated() &&
+                       request.resource.data.authorId == request.auth.uid &&
+                       isValidTheme(request.resource.data);
+      allow update: if isAuthenticated() &&
+                       resource.data.authorId == request.auth.uid &&
+                       request.resource.data.authorId == resource.data.authorId &&
+                       isValidTheme(request.resource.data) &&
+                       (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt) &&
+                       (!('id' in resource.data) || (!('id' in request.resource.data) || request.resource.data.id == resource.data.id));
+      allow delete: if isAuthenticated() && resource.data.authorId == request.auth.uid;
+    }
+
+    // KortexGram: User profiles collection (E2EE contact discovery & public keys)
+    match /kortex_gram_users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(userId) && isValidKortexGramUser(request.resource.data, userId);
+      allow update: if isOwner(userId) &&
+                       isValidKortexGramUser(request.resource.data, userId) &&
+                       (!('uid' in resource.data) || request.resource.data.uid == resource.data.uid) &&
+                       (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt);
+      allow delete: if isOwner(userId);
+    }
+
+    // KortexGram: Direct and group chats
+    match /kortex_gram_chats/{chatId} {
+      allow read: if isAuthenticated() && request.auth.uid in resource.data.participants;
+      allow create: if isAuthenticated() &&
+                       request.auth.uid in request.resource.data.participants &&
+                       isValidKortexGramChat(request.resource.data, chatId);
+      allow update: if isAuthenticated() &&
+                       request.auth.uid in resource.data.participants &&
+                       isValidKortexGramChat(request.resource.data, chatId) &&
+                       (!('id' in resource.data) || request.resource.data.id == resource.data.id) &&
+                       (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt);
+      allow delete: if isAuthenticated() && request.auth.uid in resource.data.participants;
+
+      // Subcollection: E2EE messages
+      match /messages/{messageId} {
+        allow read: if isChatParticipant(chatId);
+        allow create: if isChatParticipant(chatId) &&
+                         request.resource.data.senderId == request.auth.uid &&
+                         isValidKortexGramMessage(request.resource.data, chatId, messageId);
+        allow update: if isChatParticipant(chatId) &&
+                         isValidKortexGramMessage(request.resource.data, chatId, messageId) &&
+                         (!('id' in resource.data) || request.resource.data.id == resource.data.id) &&
+                         (!('chatId' in resource.data) || request.resource.data.chatId == resource.data.chatId) &&
+                         (!('senderId' in resource.data) || request.resource.data.senderId == resource.data.senderId) &&
+                         (!('timestamp' in resource.data) || request.resource.data.timestamp == resource.data.timestamp) &&
+                         (request.auth.uid == resource.data.senderId ||
+                          (request.resource.data.ciphertext == resource.data.ciphertext &&
+                           request.resource.data.iv == resource.data.iv &&
+                           resource.data.get('tag', null) == request.resource.data.get('tag', null)));
+        allow delete: if isChatParticipant(chatId) && resource.data.senderId == request.auth.uid;
+      }
+    }
+  }
+}

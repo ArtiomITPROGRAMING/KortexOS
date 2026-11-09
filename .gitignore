@@ -23,3 +23,8 @@ current_screen.png
 *.log
 tmp/
 .temp/
+auth_users*.json
+.firebaserc
+kortex_gram/
+*.tar.gz
+tests/test_kortex_gram_live.py
