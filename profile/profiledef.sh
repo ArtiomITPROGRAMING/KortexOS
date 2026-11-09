@@ -64,11 +64,10 @@ file_permissions=(
   ["/usr/local/bin/kortex-store"]="0:0:755"
   ["/usr/local/bin/kortex-gram"]="0:0:755"
   ["/usr/local/bin/kortex-launch"]="0:0:755"
-  ["/usr/local/bin/start-hyprland"]="0:0:755"
-  ["/usr/local/bin/Hyprland"]="0:0:755"
   ["/usr/local/bin/hyprland-welcome"]="0:0:755"
   ["/usr/local/bin/hyprland-dialog"]="0:0:755"
   ["/usr/local/bin/hyprland-donate"]="0:0:755"
+  ["/etc/profile.d/kortex-vm.sh"]="0:0:755"
   ["/etc/environment"]="0:0:644"
   ["/home/kortex"]="1000:1000:755"
 )

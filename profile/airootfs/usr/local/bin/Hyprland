@@ -1,7 +1,0 @@
-#!/usr/bin/env bash
-# ==============================================================================
-# KORTEX-OS HYPRLAND ALIAS
-# Directs commands safely through start-hyprland
-# ==============================================================================
-
-exec /usr/local/bin/start-hyprland "$@"
