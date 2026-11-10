@@ -31,7 +31,7 @@ docker run --rm --privileged \
     bash -c '
         set -euo pipefail
         echo "[*] Installing/updating archiso in builder container..."
-        pacman -Sy --noconfirm --needed archiso
+        pacman -Syu --noconfirm --needed archiso
         echo "[*] Running mkarchiso..."
         rm -rf /tmp/kortex-work
         mkdir -p /tmp/kortex-work

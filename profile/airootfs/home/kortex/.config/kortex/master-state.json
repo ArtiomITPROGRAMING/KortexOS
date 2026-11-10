@@ -1,13 +1,13 @@
 {
   "system": {
-    "language": "en",
+    "language": "ru",
     "timezone": "Europe/Chisinau",
     "kb_layout": "us,ru",
     "kb_toggle": "grp:alt_shift_toggle",
     "power_profile": "balanced"
   },
   "interface": {
-    "philosophy": "cyberdeck",
+    "philosophy": "tiling",
     "dock_enabled": true,
     "gestures": true,
     "ui_sounds": true
@@ -49,7 +49,7 @@
   },
   "wallpaper": {
     "desktop": {
-      "path": "/usr/share/backgrounds/kortex/cyber_grid.png",
+      "path": "/usr/share/backgrounds/kortex/cyber_glass.png",
       "type": "preset"
     },
     "terminal": {
@@ -57,13 +57,6 @@
       "image_path": "/usr/share/backgrounds/kortex/term_tron_grid.png",
       "dimming": 0.75
     }
-  },
-  "grid_widgets": {
-    "sys_panel": true,
-    "terminal": true,
-    "globe_net": true,
-    "file_grid": true,
-    "virtual_keyboard": true
   },
   "hotkeys": {
     "close": "SUPER, Q",
@@ -75,7 +68,6 @@
     "file_manager": "SUPER, E",
     "screenshot": "SUPER SHIFT, S",
     "lock": "SUPER, L",
-    "layout": "SUPER, TAB",
     "help_hud": "SUPER, F1"
   }
 }

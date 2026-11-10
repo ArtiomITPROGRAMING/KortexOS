@@ -86,7 +86,7 @@ def detect_gpu():
                                     vendor = "VirtualBox/VMware"
     except Exception:
         pass
-    return vendor, model, driver
+    return vendor, model, drive
 
 def read_cpu_temp():
     # 1. Thermal zones
@@ -269,9 +269,9 @@ def telemetry_collector_thread():
                 current_telemetry["cpu"]["temp_c"] = temp
                 current_telemetry["cpu"]["freq_mhz"] = freq
                 current_telemetry["cpu"]["cores"] = os.cpu_count() or 4
-                current_telemetry["gpu"]["vendor"] = gpu_vendor
+                current_telemetry["gpu"]["vendor"] = gpu_vendo
                 current_telemetry["gpu"]["model"] = gpu_model
-                current_telemetry["gpu"]["driver"] = gpu_driver
+                current_telemetry["gpu"]["driver"] = gpu_drive
                 current_telemetry["memory"]["total_mb"] = tot_mb
                 current_telemetry["memory"]["used_mb"] = used_mb
                 current_telemetry["memory"]["pct"] = mem_pct

@@ -53,7 +53,7 @@ def draw_file_grid(stdscr):
                     break
                 continue
 
-            # Header
+            # Heade
             stdscr.addstr(0, 1, f"~ {current_path}", curses.color_pair(1) | curses.A_BOLD)
             if not items:
                 stdscr.addstr(2, 4, "No items found.", curses.color_pair(2))

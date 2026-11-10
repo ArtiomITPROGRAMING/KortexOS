@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hyprland Welcome & Tour
+# Hyprland Welcome & Tou
 if [ ! -f "$HOME/.config/kortex/.tour_done" ]; then
     exec kitty --class kortex-tour --title "KORTEX OS :: SYSTEM GUIDE" -e /usr/local/bin/kortex-tour "$@"
 fi

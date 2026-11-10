@@ -2,7 +2,7 @@
 # Main background, empty for terminal default, need to be empty if you want transparent background
 theme[main_bg]="#000000"
 
-# Main text color
+# Main text colo
 theme[main_fg]="#ffffff"
 
 # Title color for boxes
@@ -23,19 +23,19 @@ theme[inactive_fg]="#555555"
 # Misc colors for processes box including mini cpu graphs, details memory graph and details status text
 theme[proc_misc]="#888888"
 
-# Cpu box outline color
+# Cpu box outline colo
 theme[cpu_box]="#444444"
 
-# Memory/disks box outline color
+# Memory/disks box outline colo
 theme[mem_box]="#444444"
 
-# Net up/down box outline color
+# Net up/down box outline colo
 theme[net_box]="#444444"
 
-# Processes box outline color
+# Processes box outline colo
 theme[proc_box]="#444444"
 
-# Box divider line and small boxes line color
+# Box divider line and small boxes line colo
 theme[div_line]="#333333"
 
 # Temperature graph colors

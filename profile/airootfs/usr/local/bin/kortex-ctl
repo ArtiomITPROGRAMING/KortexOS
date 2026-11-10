@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# KORTEX-CTL: Cyberpunk Desktop & Grid Controller
+# KORTEX-CTL: Cyberpunk Desktop & Grid Controlle
 # Manage layout, toggle modules, switch neon border themes on the fly
 # Compatible with Hyprland 0.57+ Lua Configuration
 # ==============================================================================
@@ -19,7 +19,7 @@ EOF
 }
 
 usage() {
-    banner
+    banne
     echo "Usage: kortex-ctl <command> [arguments]"
     echo ""
     echo "Commands:"
@@ -176,7 +176,7 @@ cmd_module() {
 }
 
 cmd_status() {
-    banner
+    banne
     echo ":: MODULE RUNTIME STATUS"
     for m in pulse net files term; do
         if pgrep -f "kitty --class kortex-$m" >/dev/null 2>&1; then

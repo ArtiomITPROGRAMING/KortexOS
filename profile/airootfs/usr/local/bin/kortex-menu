@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 """
 KortexOS Main Start Menu (kortex-menu)
-Windows 11 + macOS Launchpad Hybrid Start Menu.
-Triggered by Super+D or Waybar [ KORTEX ] button.
-Displays Desktop Mode Switcher, Core Apps, Control & Settings, User Plugins, and All Installed Apps.
+Clean, user-friendly Start Menu with 7 clear top actions and installed apps list.
 """
 
 import os
@@ -13,43 +11,17 @@ import subprocess
 
 ROFI_THEME = os.path.expanduser("~/.config/rofi/kortex-start.rasi")
 FALLBACK_THEME = "/etc/skel/.config/rofi/kortex-start.rasi"
-PLUGINS_DIR = os.path.expanduser("~/.config/kortex/plugins")
-GLOBAL_PLUGINS_DIR = "/usr/share/kortex/plugins"
 
 PINNED_ITEMS = [
-    ("  Режим Mac / Windows (Окна, Стекло и Нижний Док)", "/usr/local/bin/kortex-layout floating"),
-    ("⊞  Режим Cyber-Deck (Хакерская Сетка 5 Панелей)",    "/usr/local/bin/kortex-layout grid"),
-    ("▤  Режим Разработчика (Чистый Тайлинг на весь экран)","/usr/local/bin/kortex-layout tiling"),
-    ("🔍 Поиск и Калькулятор Spotlight (Super+Space)",      "/usr/local/bin/kortex-spotlight"),
-    ("🌐 Веб-Браузер Firefox (Интернет / Super+B)",         "/usr/local/bin/kortex-launch firefox"),
-    ("📁 Проводник Файлов Yazi (Win+E)",                    "kitty --class kortex-files -e yazi"),
-    ("🐚 Терминал Kitty (Super+Enter)",                     "/usr/local/bin/kortex-launch kitty"),
-    ("💬 Мессенджер KortexGram (E2EE Чат)",                 "/usr/local/bin/kortex-gram"),
-    ("🎵 Музыка и Synthwave Радио",                         "/usr/local/bin/kortex-open music"),
-    ("🏪 Магазин Программ (App Hub / Super+P)",             "/usr/local/bin/kortex-open store"),
-    ("🤖 ИИ-Ассистент Kortex AI (Super+A)",                 "/usr/local/bin/kortex-open ai"),
-    ("🎨 Настройки, Темы и Стекло (Theme Studio / Super+S)","/usr/local/bin/kortex-open settings"),
-    ("🎛️ Центр Управления: Звук, Яркость, Wi-Fi (Super+C)", "/usr/local/bin/kortex-control-center"),
-    ("📊 Диспетчер Задач (Task Manager / Ctrl+Shift+Esc)",  "kitty --class kortex-taskmgr --title 'Task Manager (btop)' -e btop"),
-    ("🛡️ Сетевой Экран (Net Guard / Super+N)",              "/usr/local/bin/kortex-open net-guard"),
-    ("💾 Бэкапы и Крипто-Сейф (Vault)",                     "/usr/local/bin/kortex-open vault"),
-    ("📖 Обучение и Гид по Системе (Welcome Tour)",         "/usr/local/bin/kortex-open tour"),
-    ("⌨️ Шпаргалка Горячих Клавиш (Super+F1)",              "/usr/local/bin/kortex-help-hud"),
-    ("💿 Установить KortexOS на Диск (Installer)",          "/usr/local/bin/kortex-open install"),
-    ("🔒 Заблокировать Экран (Win+L)",                      "/usr/local/bin/kortex-open lock"),
-    ("🔄 Перезагрузить Компьютер (Reboot)",                 "systemctl reboot"),
-    ("⏻  Выключить Компьютер (Power Off)",                  "systemctl poweroff"),
+    ("🌐 Браузер (Интернет)",          "/usr/local/bin/kortex-launch firefox"),
+    ("📁 Файлы (Проводник)",           "kitty --class kortex-files -e yazi"),
+    ("🐚 Терминал",                    "/usr/local/bin/kortex-launch kitty"),
+    ("🏪 Магазин программ",            "/usr/local/bin/kortex-open store"),
+    ("⚙️ Настройки системы",           "/usr/local/bin/kortex-open settings"),
+    ("💿 Установить KortexOS на диск", "/usr/local/bin/kortex-open install"),
+    ("⏻ Выключить компьютер",         "systemctl poweroff"),
+    ("🔄 Перезагрузить",               "systemctl reboot"),
 ]
-
-def get_plugins():
-    plugins = {}
-    for d in [PLUGINS_DIR, GLOBAL_PLUGINS_DIR]:
-        if os.path.exists(d):
-            for path in glob.glob(f"{d}/*"):
-                if os.path.isfile(path) and os.access(path, os.X_OK):
-                    name = os.path.basename(path)
-                    plugins[f"🔌 Плагин: {name}"] = path
-    return plugins
 
 def get_desktop_apps():
     apps = {}
@@ -87,9 +59,12 @@ def get_desktop_apps():
     return apps
 
 def main():
+    if subprocess.run(["pgrep", "-x", "rofi"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
+        subprocess.run(["pkill", "-x", "rofi"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        sys.exit(0)
+
     theme = ROFI_THEME if os.path.exists(ROFI_THEME) else FALLBACK_THEME
     desktop_apps = get_desktop_apps()
-    plugins = get_plugins()
 
     menu_map = {}
     options = []
@@ -98,15 +73,7 @@ def main():
         options.append(label)
         menu_map[label] = cmd
 
-    if plugins:
-        hdr_p = "───[ ПЛАГИНЫ (~/.config/kortex/plugins) ]───"
-        options.append(hdr_p)
-        menu_map[hdr_p] = ""
-        for p_label, p_cmd in plugins.items():
-            options.append(p_label)
-            menu_map[p_label] = p_cmd
-
-    hdr_a = "──────────────[ ВСЕ ПРОГРАММЫ / ALL APPS ]──────────────"
+    hdr_a = "──────────────[ ПРОГРАММЫ ]──────────────"
     options.append(hdr_a)
     menu_map[hdr_a] = ""
 
@@ -121,7 +88,7 @@ def main():
         "rofi",
         "-dmenu",
         "-i",
-        "-p", "⊞ ПУСК // KORTEX",
+        "-p", "⊞ Пуск",
         "-theme", theme
     ]
 

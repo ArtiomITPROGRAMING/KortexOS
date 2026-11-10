@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-KortexOS Ultra-Dense Braille 3D Globe & Oscilloscope Telemetry Monitor
+KortexOS Ultra-Dense Braille 3D Globe & Oscilloscope Telemetry Monito
 (1:1 Tron / eDEX-UI Cyberpunk Aesthetics)
 Zero external dependencies.
 """
@@ -112,7 +112,7 @@ def draw_net_panel(stdscr):
                 time.sleep(0.1)
                 continue
 
-            # Header
+            # Heade
             safe_addstr(stdscr, 0, 1, "GLOBAL NETWORK MAP // LIVE TELEMETRY", curses.color_pair(1) | curses.A_BOLD)
             if os.path.exists("/run/kortex/panic.state"):
                 safe_addstr(stdscr, 1, 1, "[ SHIELD: PANIC LOCKDOWN ACTIVE // ALL EXTERNAL DROPPED ]", curses.color_pair(1) | curses.A_BOLD | curses.A_STANDOUT)
@@ -165,8 +165,8 @@ def draw_net_panel(stdscr):
                     nx_t = nx
 
                     # Rotation
-                    nx_r = nx_t * cos_r - nz_t * sin_r
-                    nz_r = nx_t * sin_r + nz_t * cos_r
+                    nx_r = nx_t * cos_r - nz_t * sin_
+                    nz_r = nx_t * sin_r + nz_t * cos_
                     ny_r = ny_t
 
                     lat = math.degrees(math.asin(max(-1.0, min(1.0, ny_r))))
@@ -191,13 +191,13 @@ def draw_net_panel(stdscr):
                 nz_p = math.cos(rad_lat) * math.cos(rad_lon)
 
                 # Rotate & tilt to screen space
-                nx_r = nx_p * cos_r + nz_p * sin_r
-                nz_r = -nx_p * sin_r + nz_p * cos_r
+                nx_r = nx_p * cos_r + nz_p * sin_
+                nz_r = -nx_p * sin_r + nz_p * cos_
                 ny_r = ny_p
 
                 ny_t = ny_r * cos_t - nz_r * sin_t
                 nz_t = ny_r * sin_t + nz_r * cos_t
-                nx_t = nx_r
+                nx_t = nx_
 
                 if nz_t > 0.05: # Visible on front of sphere
                     n_px = int(cx_sub + nx_t * R_sub)
@@ -230,7 +230,7 @@ def draw_net_panel(stdscr):
             # Bottom Oscilloscope Section
             traffic_y = globe_start_y + globe_h + 1
             if traffic_y < h - 4:
-                # Oscilloscope border without duplicate header
+                # Oscilloscope border without duplicate heade
                 speed_badge = f" [ {rate_mb:.1f} Mb/s ] "
                 border_mid = max(0, w - 18 - len(speed_badge))
                 hdr_line = "┌ LIVE TRAFFIC " + ("─" * border_mid) + speed_badge + "┐"

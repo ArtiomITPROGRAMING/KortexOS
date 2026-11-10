@@ -4,71 +4,41 @@
     "height": 42,
     "margin-bottom": 8,
     "modules-center": [
-        "custom/dock-launchpad",
-        "custom/dock-term",
         "custom/dock-browser",
         "custom/dock-files",
-        "custom/dock-gram",
-        "custom/dock-ai",
-        "custom/dock-music",
+        "custom/dock-term",
         "custom/dock-store",
         "custom/dock-settings",
-        "custom/dock-ctrl",
         "custom/dock-install"
     ],
-    "custom/dock-launchpad": {
-        "format": "⌕ Spotlight",
-        "on-click": "/usr/local/bin/kortex-spotlight",
-        "tooltip": "Kortex Spotlight Search & Calculator (Super+Space)"
-    },
-    "custom/dock-term": {
-        "format": "🐚 Terminal",
-        "on-click": "/usr/local/bin/kortex-launch kitty",
-        "tooltip": "Launch Kitty Terminal (Super+Enter)"
-    },
     "custom/dock-browser": {
-        "format": "🌐 Browser",
+        "format": "🌐 Браузер",
         "on-click": "/usr/local/bin/kortex-launch firefox",
-        "tooltip": "Launch Web Browser (Super+B)"
+        "tooltip": "Браузер (Интернет)"
     },
     "custom/dock-files": {
-        "format": "📁 Files",
+        "format": "📁 Файлы",
         "on-click": "kitty --class kortex-files -e yazi",
-        "tooltip": "Launch File Manager (Super+E)"
+        "tooltip": "Файлы (Проводник)"
     },
-    "custom/dock-gram": {
-        "format": "💬 Gram",
-        "on-click": "/usr/local/bin/kortex-gram",
-        "tooltip": "KortexGram E2EE Messenger"
-    },
-    "custom/dock-ai": {
-        "format": "🤖 AI",
-        "on-click": "/usr/local/bin/kortex-open ai",
-        "tooltip": "Kortex AI Assistant (Super+A)"
-    },
-    "custom/dock-music": {
-        "format": "🎵 Music",
-        "on-click": "/usr/local/bin/kortex-open music",
-        "tooltip": "Kortex Synthwave & Audio Player"
+    "custom/dock-term": {
+        "format": "🐚 Терминал",
+        "on-click": "/usr/local/bin/kortex-launch kitty",
+        "tooltip": "Терминал"
     },
     "custom/dock-store": {
-        "format": "🏪 Store",
+        "format": "🏪 Программы",
         "on-click": "/usr/local/bin/kortex-open store",
-        "tooltip": "Kortex Software Center (Super+P)"
+        "tooltip": "Магазин программ"
     },
     "custom/dock-settings": {
-        "format": "🎨 Studio",
+        "format": "⚙️ Настройки",
         "on-click": "/usr/local/bin/kortex-open settings",
-        "tooltip": "Kortex Theme Studio Pro & Settings (Super+S)"
-    },
-    "custom/dock-ctrl": {
-        "format": "🎛 Control",
-        "on-click": "/usr/local/bin/kortex-control-center",
-        "tooltip": "MacBook Control Center (Volume, Brightness, Wi-Fi, BT, DND)"
+        "tooltip": "Настройки системы"
     },
     "custom/dock-install": {
-        "format": "💿 Install",
+        "format": "💿 Установка ОС",
         "on-click": "/usr/local/bin/kortex-open install",
-        "tooltip": "Install KortexOS to Disk with Persistence"
+        "tooltip": "Установить KortexOS на диск"
     }
 }

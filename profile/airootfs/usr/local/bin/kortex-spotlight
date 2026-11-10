@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-KORTEX-SPOTLIGHT: Instant Unified Center Search, File Finder, Calculator & Action HUD
-Triggered via Super + Space (MacBook Spotlight UX on Arch Linux)
+KORTEX-SPOTLIGHT: Instant Unified Center Search, File Finder & Calculato
+Triggered via Super + Space or top bar [ ⌕ Поиск ]
 Supports:
 - Application Launcher (.desktop files)
 - Fast File Search (Home directory, Documents, Configs, Backgrounds)
 - Built-in Math Calculator (e.g., 42*8, sqrt(256), sin(pi/2))
-- Quick Commands: theme cyan, opacity 85, layout mac, wallpaper matrix, etc.
+- Quick Commands: theme cyan, opacity 85, wallpaper glass, etc.
 """
 
 import sys
@@ -39,7 +39,7 @@ def get_apps():
                             name = None
                             break
                 if name and exec_cmd:
-                    apps[f"⚡ App: {name}"] = exec_cmd
+                    apps[f"⚡ Программа: {name}"] = exec_cmd
             except Exception:
                 pass
     return apps
@@ -57,7 +57,6 @@ def get_indexed_files(max_files=120):
         if not os.path.exists(root_dir):
             continue
         for dirpath, dirnames, filenames in os.walk(root_dir):
-            # Prune hidden cache/git folders except .config/kortex and .config/hypr
             dirnames[:] = [d for d in dirnames if not d.startswith(".") or d in (".config", "kortex", "hypr")][:8]
             depth = dirpath[len(root_dir):].count(os.sep)
             if depth > 2:
@@ -67,7 +66,7 @@ def get_indexed_files(max_files=120):
                     continue
                 full_p = os.path.join(dirpath, fn)
                 short_p = full_p.replace(os.path.expanduser("~"), "~")
-                files[f"📄 File: {short_p}"] = full_p
+                files[f"📄 Файл: {short_p}"] = full_p
                 count += 1
                 if count >= max_files:
                     return files
@@ -117,40 +116,34 @@ def copy_clipboard(text):
         pass
 
 def main():
+    if subprocess.run(["pgrep", "-x", "rofi"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
+        subprocess.run(["pkill", "-x", "rofi"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        sys.exit(0)
+
     apps = get_apps()
     files = get_indexed_files()
 
     commands = {
-        "🎛️ Control Center: Volume, Brightness, Wi-Fi, BT & DND": "/usr/local/bin/kortex-control-center",
-        "💬 KortexGram: E2EE Cyberpunk Messenger": "/usr/local/bin/kortex-gram",
-        "🎵 Music: Cyberdeck Audio & Synthwave Radio": "/usr/local/bin/kortex-open music",
-        "📖 System Tour & Guide: Interactive Navigator": "/usr/local/bin/kortex-open tour",
-        "🏪 Store: Kortex App Hub (Software Center)": "/usr/local/bin/kortex-open store",
-        "⚙️ Settings: Kortex Theme Studio Pro": "/usr/local/bin/kortex-settings",
-        "🧭 OOBE: Run Initial Setup Wizard": "kitty --class kortex-oobe --title 'KORTEX-OS SETUP' -e /usr/local/bin/kortex-oobe --force",
-        "🎨 Theme: Cyber Cyan (Neon Blue)": "/usr/local/bin/kortex-theme-apply --theme cyan",
-        "🎨 Theme: Tokyo Night (Indigo & Lavender)": "/usr/local/bin/kortex-theme-apply --theme tokyonight",
-        "🎨 Theme: Dracula (Gothic Violet & Pink)": "/usr/local/bin/kortex-theme-apply --theme dracula",
-        "🎨 Theme: Matrix (Phosphor Green)": "/usr/local/bin/kortex-theme-apply --theme matrix",
-        "🎨 Theme: Amber CRT (Vintage 80s)": "/usr/local/bin/kortex-theme-apply --theme amber",
-        "🎨 Theme: Mono Tron (Minimalist White)": "/usr/local/bin/kortex-theme-apply --theme mono",
-        "🎨 Theme: Crimson (Red Combat HUD)": "/usr/local/bin/kortex-theme-apply --theme crimson",
-        "🖥️ Layout: MacBook Pro Mode (Glass & Dock)": "/usr/local/bin/kortex-layout floating",
-        "🖥️ Layout: Cyber-Deck (eDEX 5-Panel Grid)": "/usr/local/bin/kortex-layout grid",
-        "🖥️ Layout: Pure Tiling (Pro Developer)": "/usr/local/bin/kortex-layout tiling",
-        "🖼️ Wallpaper: Cyber Grid (Vector Tron)": "/usr/local/bin/kortex-wallpaper desktop grid",
-        "🖼️ Wallpaper: Cyber Glass (MacBook Mesh)": "/usr/local/bin/kortex-wallpaper desktop glass",
-        "🖼️ Wallpaper: Matrix Rain (Phosphor Code)": "/usr/local/bin/kortex-wallpaper desktop matrix",
-        "🖼️ Wallpaper: Tokyo Horizon (Synthwave)": "/usr/local/bin/kortex-wallpaper desktop tokyo",
-        "🖼️ Wallpaper: Pitch Black (OLED #000000)": "/usr/local/bin/kortex-wallpaper desktop black",
-        "💻 Terminal Wallpaper: Tron Grid": "/usr/local/bin/kortex-wallpaper terminal tron 0.75",
-        "💻 Terminal Wallpaper: Matrix Bitgrid": "/usr/local/bin/kortex-wallpaper terminal matrix 0.75",
-        "💻 Terminal Wallpaper: Dark Carbon": "/usr/local/bin/kortex-wallpaper terminal carbon 0.75",
-        "💻 Terminal Wallpaper: Disable": "/usr/local/bin/kortex-wallpaper terminal none",
-        "⌨️ Cheatsheet: System Hotkeys (HUD)": "/usr/local/bin/kortex-help-hud",
-        "🔒 System: Lock Screen": "/usr/local/bin/kortex-open lock",
-        "🔄 System: Reboot": "systemctl reboot",
-        "🛑 System: Power Off": "systemctl poweroff"
+        "🌐 Браузер (Интернет)": "/usr/local/bin/kortex-launch firefox",
+        "📁 Файлы (Проводник)": "kitty --class kortex-files -e yazi",
+        "🐚 Терминал": "/usr/local/bin/kortex-launch kitty",
+        "🏪 Магазин программ": "/usr/local/bin/kortex-open store",
+        "⚙️ Настройки системы": "/usr/local/bin/kortex-open settings",
+        "🎛️ Звук и Сеть (Центр управления)": "/usr/local/bin/kortex-control-center",
+        "💿 Установить KortexOS на диск": "/usr/local/bin/kortex-open install",
+        "🎨 Тема: Cyber Cyan": "/usr/local/bin/kortex-theme-apply --theme cyan",
+        "🎨 Тема: Tokyo Night": "/usr/local/bin/kortex-theme-apply --theme tokyonight",
+        "🎨 Тема: Dracula": "/usr/local/bin/kortex-theme-apply --theme dracula",
+        "🎨 Тема: Matrix": "/usr/local/bin/kortex-theme-apply --theme matrix",
+        "🎨 Тема: Mono": "/usr/local/bin/kortex-theme-apply --theme mono",
+        "🖼️ Обои: Cyber Glass": "/usr/local/bin/kortex-wallpaper desktop glass",
+        "🖼️ Обои: Tokyo Horizon": "/usr/local/bin/kortex-wallpaper desktop tokyo",
+        "🖼️ Обои: Cyber Grid": "/usr/local/bin/kortex-wallpaper desktop grid",
+        "🖼️ Обои: Matrix": "/usr/local/bin/kortex-wallpaper desktop matrix",
+        "🖼️ Обои: Pitch Black": "/usr/local/bin/kortex-wallpaper desktop black",
+        "🔒 Заблокировать экран": "/usr/local/bin/kortex-open lock",
+        "🔄 Перезагрузить": "systemctl reboot",
+        "⏻ Выключить компьютер": "systemctl poweroff"
     }
 
     candidates = list(commands.keys()) + sorted(list(apps.keys())) + sorted(list(files.keys()))
@@ -178,7 +171,7 @@ def main():
     prompt { text-color: #00f0ff; font-weight: bold; margin: 0 8px 0 0; }
     entry {
         text-color: #ffffff;
-        placeholder: "Apps, files, math (42*8), theme cyan, opacity 85, layout mac...";
+        placeholder: "Поиск программ, файлов или калькулятор (42*8)...";
         placeholder-color: #6e7681;
     }
     listview { lines: 9; background-color: transparent; spacing: 4px; }
@@ -192,7 +185,7 @@ def main():
     """
 
     res = subprocess.run(
-        ["rofi", "-dmenu", "-i", "-p", "🔍 SPOTLIGHT", "-theme-str", rofi_theme],
+        ["rofi", "-dmenu", "-i", "-p", "⌕ Поиск", "-theme-str", rofi_theme],
         input=prompt_text,
         capture_output=True,
         text=True
@@ -217,46 +210,27 @@ def main():
     math_val = evaluate_math(choice)
     if math_val is not None:
         copy_clipboard(math_val)
-        notify("Calculator Result (Copied)", f"{choice} = {math_val}")
+        notify("Результат скопирован", f"{choice} = {math_val}")
         print(f"{choice} = {math_val}")
         sys.exit(0)
 
     lower = choice.lower().strip()
-    if lower in ("music", "player", "radio", "song", "play"):
-        subprocess.Popen("/usr/local/bin/kortex-open music", shell=True)
-        sys.exit(0)
-
-    if lower in ("tour", "guide", "welcome", "help", "gid", "spravka"):
-        subprocess.Popen("/usr/local/bin/kortex-open tour", shell=True)
-        sys.exit(0)
-
     if lower.startswith("theme "):
         t_name = lower.split(" ", 1)[1].strip()
         subprocess.run(["/usr/local/bin/kortex-theme-apply", "--theme", t_name])
-        notify("Kortex Theme", f"Applied theme: {t_name.upper()}")
-        sys.exit(0)
-
-    if lower.startswith("layout "):
-        l_name = lower.split(" ", 1)[1].strip()
-        if l_name in ("mac", "macbook", "floating", "float", "classic"):
-            subprocess.run(["/usr/local/bin/kortex-layout", "floating"])
-        elif l_name in ("grid", "cyber", "cyberdeck"):
-            subprocess.run(["/usr/local/bin/kortex-layout", "grid"])
-        elif l_name in ("tiling", "tile", "dev"):
-            subprocess.run(["/usr/local/bin/kortex-layout", "tiling"])
-        notify("Kortex Layout", f"Switched layout: {l_name.upper()}")
+        notify("Kortex Theme", f"Тема применена: {t_name.upper()}")
         sys.exit(0)
 
     if lower.startswith("wallpaper "):
         w_target = choice.split(" ", 1)[1].strip()
         subprocess.run(["/usr/local/bin/kortex-wallpaper", "desktop", w_target])
-        notify("Kortex Wallpaper", f"Updated desktop wallpaper: {w_target}")
+        notify("Kortex Wallpaper", f"Обои обновлены: {w_target}")
         sys.exit(0)
 
     if lower.startswith("opacity "):
         op_val = lower.split(" ", 1)[1].strip()
         subprocess.run(["/usr/local/bin/kortex-theme-apply", "--opacity", op_val])
-        notify("Kortex Glass", f"Window opacity set to: {op_val}")
+        notify("Kortex Glass", f"Прозрачность окон: {op_val}")
         sys.exit(0)
 
     if os.path.exists(os.path.expanduser(choice)):

@@ -25,7 +25,10 @@ def resolve_asset(filename):
     p1 = os.path.join(BG_DIR, filename)
     if os.path.exists(p1):
         return p1
-    return os.path.join(FALLBACK_DIR, filename)
+    p2 = os.path.join(FALLBACK_DIR, filename)
+    if os.path.exists(p2):
+        return p2
+    return p1
 
 DESKTOP_PRESETS = {
     "grid":       resolve_asset("cyber_grid.png"),
@@ -36,7 +39,7 @@ DESKTOP_PRESETS = {
     "tokyo":      resolve_asset("tokyo_horizon.png"),
     "black":      resolve_asset("pitch_black.png"),
     "#000000":    resolve_asset("pitch_black.png"),
-    "default":    resolve_asset("cyber_grid.png")
+    "default":    resolve_asset("cyber_glass.png")
 }
 
 TERMINAL_PRESETS = {
@@ -95,10 +98,14 @@ def apply_desktop_wallpaper(img_path):
     elif os.path.exists(os.path.join(FALLBACK_DIR, img_path)):
         img_path = os.path.join(FALLBACK_DIR, img_path)
     else:
-        img_path = os.path.expanduser(img_path)
-
-    if not os.path.exists(img_path):
-        img_path = DESKTOP_PRESETS["black"]
+        expanded = os.path.expanduser(img_path)
+        preset_names = {os.path.basename(v) for v in DESKTOP_PRESETS.values()}
+        if os.path.basename(expanded) in preset_names:
+            img_path = resolve_asset(os.path.basename(expanded))
+        elif os.path.exists(expanded):
+            img_path = expanded
+        else:
+            img_path = DESKTOP_PRESETS["glass"]
 
     # 1. Update hyprpaper.conf
     os.makedirs(os.path.dirname(HYPRPAPER_CONF), exist_ok=True)
@@ -114,7 +121,7 @@ ipc = on
     except Exception as e:
         print(f"[-] Warning: Failed to write hyprpaper.conf: {e}")
 
-    # 2. Live apply via swww or hyprpaper
+    # 2. Live apply via swww or hyprpape
     env = get_hypr_env()
     try:
         swww_running = subprocess.run(["pgrep", "-x", "swww-daemon"], capture_output=True).returncode == 0
@@ -206,7 +213,7 @@ def apply_terminal_wallpaper(img_path, dimming=0.75):
 def print_status():
     st = load_master_state()
     wp = st.get("wallpaper", {})
-    desk = wp.get("desktop", {}).get("path", DESKTOP_PRESETS["grid"])
+    desk = wp.get("desktop", {}).get("path", DESKTOP_PRESETS["glass"])
     term_wp = wp.get("terminal", {})
     term_img = term_wp.get("image_path", "None") if term_wp.get("image_enabled") else "Disabled"
     dim = term_wp.get("dimming", 0.75)
@@ -231,7 +238,7 @@ def main():
 
     cmd = sys.argv[1].lower()
     if cmd in ("desktop", "desk", "set"):
-        target = sys.argv[2] if len(sys.argv) > 2 else "grid"
+        target = sys.argv[2] if len(sys.argv) > 2 else "glass"
         apply_desktop_wallpaper(target)
     elif cmd in ("terminal", "term", "kitty"):
         target = sys.argv[2] if len(sys.argv) > 2 else "tron"

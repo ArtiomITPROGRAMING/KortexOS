@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# KORTEX-LAYOUT: Desktop Mode & Window Layout Switcher
-# Modes: grid (eDEX Cyber-Deck), tiling (Pro Developer), floating (MacBook Pro Mode)
+# KORTEX-LAYOUT: Smart Auto-Tiling & Desktop Panel Manage
+# Keeps dwindle auto-tiling (fullscreen for 1 window, 50/50 split for 2+ windows)
+# with top Waybar and bottom Dock always active.
 # ==============================================================================
 
 set -u
@@ -20,160 +21,32 @@ if [ -z "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
     fi
 fi
 
-get_current_mode() {
-    local mstate="${HOME}/.config/kortex/master-state.json"
-    if [ -f "$STATE_FILE" ]; then
-        cat "$STATE_FILE"
-    elif [ -f "$mstate" ] && command -v jq >/dev/null 2>&1; then
-        local p
-        p=$(jq -r '.interface.philosophy // "cyberdeck"' "$mstate" 2>/dev/null || echo "cyberdeck")
-        if [ "$p" = "macbook" ]; then echo "floating"; elif [ "$p" = "tiling" ]; then echo "tiling"; else echo "grid"; fi
-    else
-        echo "grid"
+ensure_panels() {
+    if ! pgrep -f "^(/usr/bin/)?waybar$" >/dev/null 2>&1; then
+        waybar >/dev/null 2>&1 &
     fi
-}
-
-set_config_mode() {
-    local m="$1"
-    echo "$m" > "$STATE_FILE"
-    if [ -f "$CONF_FILE" ] && command -v jq >/dev/null 2>&1; then
-        local tmp
-        tmp=$(mktemp)
-        jq --arg lay "$m" '.layout = $lay' "$CONF_FILE" > "$tmp" 2>/dev/null && mv "$tmp" "$CONF_FILE"
-    fi
-    local mstate="${HOME}/.config/kortex/master-state.json"
-    if [ -f "$mstate" ] && command -v jq >/dev/null 2>&1; then
-        local philo="cyberdeck"
-        local dock="false"
-        if [ "$m" = "tiling" ]; then
-            philo="tiling"
-        elif [ "$m" = "floating" ]; then
-            philo="macbook"
-            dock="true"
-        fi
-        local tmpm
-        tmpm=$(mktemp)
-        jq --arg p "$philo" --argjson d "$dock" '.interface.philosophy = $p | .interface.dock_enabled = $d' "$mstate" > "$tmpm" 2>/dev/null && mv "$tmpm" "$mstate"
-    fi
-    /usr/local/bin/kortex-theme-apply >/dev/null 2>&1 &
-}
-
-notify_mode() {
-    local title="$1"
-    local desc="$2"
-    if command -v notify-send >/dev/null 2>&1; then
-        notify-send -t 2000 -a "KORTEX-OS" "$title" "$desc" 2>/dev/null || true
-    fi
-}
-
-apply_grid() {
-    set_config_mode "grid"
-    pkill -f "waybar -c .*config-dock" 2>/dev/null || true
-    timeout 2 hyprctl eval 'hl.config({ general = { layout = "dwindle" } })' >/dev/null 2>&1 || true
-
-    /usr/local/bin/kortex-grid-init --force-grid >/dev/null 2>&1 &
-    notify_mode "KORTEX LAYOUT" "Mode: Cyber-Deck 5-Panel Grid (eDEX-UI)"
-    echo "grid"
-}
-
-apply_tiling() {
-    set_config_mode "tiling"
-    pkill -f "waybar -c .*config-dock" 2>/dev/null || true
-    pkill -f "kitty --class kortex-kb" 2>/dev/null || true
-    pkill -f "kitty --class kortex-files" 2>/dev/null || true
-    pkill -f "kitty --class kortex-net" 2>/dev/null || true
-    pkill -f "kitty --class kortex-pulse" 2>/dev/null || true
-
-    timeout 2 hyprctl eval 'hl.config({ general = { layout = "dwindle" } })' >/dev/null 2>&1 || true
-    timeout 2 hyprctl eval 'hl.dispatch(hl.dsp.window.float({ action = "unset" }))' >/dev/null 2>&1 || true
-
-    if ! pgrep -f "kitty" >/dev/null 2>&1; then
-        kitty >/dev/null 2>&1 &
-    fi
-
-    notify_mode "KORTEX LAYOUT" "Mode: Pro Developer (Pure Tiling)"
-    echo "tiling"
-}
-
-apply_floating() {
-    set_config_mode "floating"
-    pkill -f "kitty --class kortex-kb" 2>/dev/null || true
-    pkill -f "kitty --class kortex-files" 2>/dev/null || true
-    pkill -f "kitty --class kortex-net" 2>/dev/null || true
-    pkill -f "kitty --class kortex-pulse" 2>/dev/null || true
-
-    timeout 2 hyprctl eval 'hl.dispatch(hl.dsp.window.float({ action = "set" }))' >/dev/null 2>&1 || true
-
-    # Launch MacBook Pro Bottom Interactive Glass Dock
     if [ -f "${HOME}/.config/waybar/config-dock" ]; then
         if ! pgrep -f "waybar -c .*config-dock" >/dev/null 2>&1; then
             waybar -c "${HOME}/.config/waybar/config-dock" -s "${HOME}/.config/waybar/style-dock.css" >/dev/null 2>&1 &
         fi
     fi
-
-    if ! pgrep -f "kitty" >/dev/null 2>&1; then
-        kitty >/dev/null 2>&1 &
-    fi
-
-    notify_mode "KORTEX LAYOUT" "Mode: MacBook Pro (Glass, Top Bar & Interactive Dock)"
-    echo "floating"
 }
 
-cycle_next() {
-    local cur
-    cur=$(get_current_mode)
-    case "$cur" in
-        grid)
-            apply_floating
-            ;;
-        floating)
-            apply_tiling
-            ;;
-        tiling|*)
-            apply_grid
-            ;;
-    esac
+apply_tiling() {
+    echo "tiling" > "$STATE_FILE"
+    ensure_panels
+    timeout 2 hyprctl eval 'hl.config({ general = { layout = "dwindle" } })' >/dev/null 2>&1 || true
+    /usr/local/bin/kortex-theme-apply >/dev/null 2>&1 &
+    echo "tiling"
 }
 
-waybar_status() {
-    local cur
-    cur=$(get_current_mode)
-    case "$cur" in
-        tiling)
-            echo '{"text": "[ ▤ DEV TILE ]", "tooltip": "Layout: Pro Developer Pure Tiling (Super+Tab)", "class": "tiling"}'
-            ;;
-        floating)
-            echo '{"text": "[  MAC GLASS ]", "tooltip": "Layout: MacBook Pro Glass & Dock (Super+Tab)", "class": "floating"}'
-            ;;
-        grid|*)
-            echo '{"text": "[ ⊞ CYBER GRID ]", "tooltip": "Layout: eDEX Cyber-Deck 5-Panel Grid (Super+Tab)", "class": "grid"}'
-            ;;
-    esac
-}
-
-cmd="${1:-next}"
+cmd="${1:-tiling}"
 
 case "$cmd" in
-    grid|cyberdeck)
-        apply_grid
-        ;;
-    tiling|tile|dev)
-        apply_tiling
-        ;;
-    floating|float|mac|macbook)
-        apply_floating
-        ;;
-    next|cycle|toggle)
-        cycle_next
-        ;;
     status|get)
-        get_current_mode
-        ;;
-    waybar)
-        waybar_status
+        echo "tiling"
         ;;
     *)
-        echo "Usage: kortex-layout [grid|tiling|floating|macbook|next|status|waybar]"
-        exit 1
+        apply_tiling
         ;;
 esac

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-KORTEX-THEME-APPLY: Unified Design, Geometry & Persistence Generator
+KORTEX-THEME-APPLY: Unified Design, Geometry & Persistence Generato
 Transforms ~/.config/kortex/master-state.json into live synchronized configurations for:
 - Hyprland 0.57+ (theme.lua + live hyprctl eval & keyword updates)
 - Waybar (style.css + style-dock.css + SIGUSR2 reload)
@@ -37,14 +37,14 @@ KDE_GLOBALS = os.path.expanduser("~/.config/kdeglobals")
 
 DEFAULT_MASTER = {
     "system": {
-        "language": "en",
+        "language": "ru",
         "timezone": "Europe/Chisinau",
         "kb_layout": "us,ru",
         "kb_toggle": "grp:alt_shift_toggle",
         "power_profile": "balanced"
     },
     "interface": {
-        "philosophy": "cyberdeck",  # "cyberdeck" | "macbook" | "tiling"
+        "philosophy": "tiling",
         "dock_enabled": True,
         "gestures": True,
         "ui_sounds": True
@@ -86,7 +86,7 @@ DEFAULT_MASTER = {
     },
     "wallpaper": {
         "desktop": {
-            "path": "/usr/share/backgrounds/kortex/cyber_grid.png",
+            "path": "/usr/share/backgrounds/kortex/cyber_glass.png",
             "type": "preset"
         },
         "terminal": {
@@ -94,13 +94,6 @@ DEFAULT_MASTER = {
             "image_path": "/usr/share/backgrounds/kortex/term_tron_grid.png",
             "dimming": 0.75
         }
-    },
-    "grid_widgets": {
-        "sys_panel": True,
-        "terminal": True,
-        "globe_net": True,
-        "file_grid": True,
-        "virtual_keyboard": True
     },
     "hotkeys": {
         "close": "SUPER, Q",
@@ -112,7 +105,6 @@ DEFAULT_MASTER = {
         "file_manager": "SUPER, E",
         "screenshot": "SUPER SHIFT, S",
         "lock": "SUPER, L",
-        "layout": "SUPER, TAB",
         "help_hud": "SUPER, F1"
     }
 }
@@ -388,6 +380,8 @@ hl.animation({{ leaf = "borderangle", enabled = {loop_anim}, speed = 28, bezier 
         f"keyword decoration:blur:vibrancy {blur_vibrancy:.4f}",
         f"keyword decoration:shadow:enabled {shadow_enabled}",
         f"keyword decoration:shadow:range {glow_radius}",
+        f"keyword input:kb_layout {kb_layout}",
+        f"keyword input:kb_options {kb_toggle}",
     ]
     try:
         subprocess.run(["hyprctl", "--batch", " ; ".join(batch_cmds)], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=3)
@@ -399,7 +393,7 @@ def apply_waybar(st):
     pal = th.get("palette", {})
     borders = th.get("borders", {})
     glass = th.get("glass", {})
-    phil = st.get("interface", {}).get("philosophy", "cyberdeck")
+    phil = st.get("interface", {}).get("philosophy", "tiling")
 
     base = pal.get("base_bg", "#0a0c10")
     surf = pal.get("surface_bg", "#12161f")
@@ -416,20 +410,8 @@ def apply_waybar(st):
     r_s, g_s, b_s = hex_to_rgb(surf)
     surf_rgba = f"rgba({r_s}, {g_s}, {b_s}, {min(1.0, op_panel + 0.05):.2f})"
 
-    mac_island = f"""
-    margin: 6px 12px 0px 12px;
-    border-radius: {max(10, rnd)}px;
-    border: 1px solid {b_act};
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
-""" if phil == "macbook" else f"""
-    border-bottom: 2px solid {b_act};
-    margin: 0px;
-    border-radius: 0px;
-"""
-
     css = f"""/* ==========================================================================
-   KORTEX-OS LIVE GENERATED WAYBAR STYLESHEET
-   Philosophy: {phil.upper()}
+   KORTEX-OS TOP BAR STYLESHEET
    ========================================================================== */
 
 * {{
@@ -444,11 +426,13 @@ def apply_waybar(st):
 window#waybar {{
     background: {bg_rgba};
     color: #e6edf3;
-{mac_island}
+    border-bottom: 2px solid {b_act};
+    margin: 0px;
+    border-radius: 0px;
     transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }}
 
-#custom-menu, #custom-logo {{
+#custom-menu {{
     background: {pri};
     color: {base};
     padding: 0 10px;
@@ -458,16 +442,21 @@ window#waybar {{
     letter-spacing: 1px;
 }}
 
-#custom-layout, #custom-spotlight, #custom-control-center, #custom-guide, #custom-store, #custom-ai, #custom-settings, #custom-guard {{
+#custom-spotlight, #custom-control-center {{
     background: {surf_rgba};
     color: {pri};
     border: 1px solid {sec};
     border-radius: {rnd}px;
-    padding: 0 8px;
+    padding: 0 10px;
     margin: 3px 2px;
 }}
 
-#custom-win-min, #custom-win-max, #custom-win-close {{
+#custom-spotlight:hover, #custom-control-center:hover {{
+    background: {pri};
+    color: {base};
+}}
+
+#custom-win-max, #custom-win-close {{
     background: {surf_rgba};
     color: #c9d1d9;
     border-radius: {rnd}px;
@@ -482,12 +471,12 @@ window#waybar {{
     border-color: {crit};
 }}
 
-#custom-win-max:hover, #custom-win-min:hover {{
+#custom-win-max:hover {{
     background: {sec};
     color: #ffffff;
 }}
 
-#workspaces button, #taskbar button {{
+#taskbar button {{
     padding: 0 8px;
     margin: 3px 2px;
     color: #8b949e;
@@ -495,12 +484,12 @@ window#waybar {{
     background: transparent;
 }}
 
-#workspaces button.active, #taskbar button.active {{
+#taskbar button.active {{
     color: {base};
     background: {pri};
 }}
 
-#clock, #battery, #cpu, #memory, #disk, #pulseaudio, #network, #custom-plugins, #custom-help {{
+#clock, #battery, #network {{
     background: {surf_rgba};
     color: {pri};
     border-radius: {rnd}px;
@@ -518,7 +507,7 @@ window#waybar {{
     with open(WAYBAR_STYLE, "w", encoding="utf-8") as f:
         f.write(css)
 
-    dock_css = f"""/* KORTEX-OS MACBOOK PRO INTERACTIVE GLASS DOCK */
+    dock_css = f"""/* KORTEX-OS BOTTOM GLASS DOCK */
 * {{
     border: none;
     font-family: "JetBrainsMono Nerd Font", "JetBrains Mono", monospace;
@@ -532,9 +521,8 @@ window#waybar {{
     margin: 0px 0px 8px 0px;
     padding: 4px 10px;
 }}
-#custom-dock-launchpad, #custom-dock-term, #custom-dock-browser, #custom-dock-files,
-#custom-dock-gram, #custom-dock-ai, #custom-dock-music, #custom-dock-store,
-#custom-dock-settings, #custom-dock-ctrl, #custom-dock-install {{
+#custom-dock-browser, #custom-dock-files, #custom-dock-term,
+#custom-dock-store, #custom-dock-settings, #custom-dock-install {{
     background: {surf_rgba};
     color: {pri};
     border: 1px solid {sec};
@@ -542,10 +530,8 @@ window#waybar {{
     padding: 4px 12px;
     margin: 4px 4px;
 }}
-#custom-dock-launchpad:hover, #custom-dock-term:hover, #custom-dock-browser:hover,
-#custom-dock-files:hover, #custom-dock-gram:hover, #custom-dock-ai:hover,
-#custom-dock-music:hover, #custom-dock-store:hover, #custom-dock-settings:hover,
-#custom-dock-ctrl:hover, #custom-dock-install:hover {{
+#custom-dock-browser:hover, #custom-dock-files:hover, #custom-dock-term:hover,
+#custom-dock-store:hover, #custom-dock-settings:hover, #custom-dock-install:hover {{
     background: {pri};
     color: {base};
 }}
@@ -730,10 +716,7 @@ def main():
                 print(f"  * {k:12} : {v['name']} ({v['primary_accent']})")
             sys.exit(0)
         elif a in ("--layout", "-l") and idx + 1 < len(args):
-            l_key = args[idx+1].lower()
-            if l_key in ("cyberdeck", "macbook", "tiling", "grid", "floating"):
-                mapped = "cyberdeck" if l_key == "grid" else ("macbook" if l_key == "floating" else l_key)
-                st["interface"]["philosophy"] = mapped
+            st["interface"]["philosophy"] = "tiling"
             idx += 2
         elif a in ("--accent", "-a") and idx + 1 < len(args):
             col = "#" + clean_hex(args[idx+1])

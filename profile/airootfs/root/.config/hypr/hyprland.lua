@@ -1,6 +1,6 @@
 -- ==============================================================================
 -- KORTEX-OS HYPRLAND MASTER LUA CONFIGURATION (Hyprland 0.57.1+)
--- Unified Design & Persistence Engine (MacBook UX + Cyber-Deck)
+-- Unified Design & Persistence Engine
 -- ==============================================================================
 
 ------------------
@@ -149,16 +149,6 @@ hl.animation({ leaf = "workspaces",  enabled = true,  speed = 3.5,  bezier = "al
 ---- WINDOW RULES ----
 ----------------------
 
--- Kortex Cyber-Deck 5-Module Grid
-hl.window_rule({ match = { class = "kortex-pulse" }, float = true, move = "0.5% 4%",  size = "19% 95%" })
-hl.window_rule({ match = { class = "kortex-term" },  float = true, move = "20% 4%",   size = "57% 62%" })
-hl.window_rule({ match = { class = "kortex-net" },   float = true, move = "77.5% 4%", size = "22% 62%" })
-hl.window_rule({ match = { class = "kortex-files" }, float = true, move = "20% 67%",  size = "33% 32%" })
-hl.window_rule({ match = { class = "kortex-kb" },    float = true, move = "53.5% 67%",size = "46% 32%" })
-
--- OOBE Initial Setup Wizard (Fullscreen)
-hl.window_rule({ match = { class = "kortex-oobe" }, fullscreen = true })
-
 -- KIS System Dialogs
 hl.window_rule({ match = { class = "kortex-install" },   float = true, move = "15% 10%", size = "70% 80%" })
 hl.window_rule({ match = { class = "kortex-settings" },  float = true, move = "15% 10%", size = "70% 80%" })
@@ -189,6 +179,7 @@ pcall(dofile, (os.getenv("HOME") or "/home/kortex") .. "/.config/hypr/theme.lua"
 hl.on("hyprland.start", function()
     hl.exec_cmd("hyprpaper &")
     hl.exec_cmd("waybar &")
+    hl.exec_cmd("waybar -c ~/.config/waybar/config-dock -s ~/.config/waybar/style-dock.css &")
     hl.exec_cmd("/usr/lib/polkit-kde-authentication-agent-1 &")
     hl.exec_cmd("/usr/local/bin/kortex-audio-fx &")
     hl.exec_cmd("/usr/local/bin/kortex-link-daemon &")
@@ -216,10 +207,8 @@ hl.bind(mainMod .. " + R",      hl.dsp.exec_cmd("pkill rofi || /usr/local/bin/ko
 hl.bind(mainMod .. " + C",      hl.dsp.exec_cmd("pkill rofi || /usr/local/bin/kortex-control-center"))
 hl.bind(mainMod .. " + X",      hl.dsp.exec_cmd("pkill rofi || /usr/local/bin/kortex-control-center"))
 hl.bind(mainMod .. " + D",      hl.dsp.exec_cmd("pkill rofi || /usr/local/bin/kortex-menu"))
-hl.bind(mainMod .. " + Tab",    hl.dsp.exec_cmd("/usr/local/bin/kortex-layout next"))
 hl.bind(mainMod .. " + B",      hl.dsp.exec_cmd("/usr/local/bin/kortex-launch firefox || /usr/local/bin/kortex-launch chromium || kitty"))
 hl.bind(mainMod .. " + E",      hl.dsp.exec_cmd("kitty --class kortex-files -e yazi"))
-hl.bind(mainMod .. " + G",      hl.dsp.exec_cmd("/usr/local/bin/kortex-grid-init --force-grid"))
 hl.bind(mainMod .. " + F1",     hl.dsp.exec_cmd("/usr/local/bin/kortex-help-hud"))
 hl.bind(mainMod .. " + M",      hl.dsp.exec_cmd("/usr/local/bin/kortex-open link"))
 

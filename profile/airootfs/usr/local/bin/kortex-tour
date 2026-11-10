@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 ==============================================================================
-KORTEX-TOUR: Interactive Guided System Tour & Welcome Navigator
+KORTEX-TOUR: Interactive Guided System Tour & Welcome Navigato
 Designed for newcomers and advanced users alike.
 Provides step-by-step explanations, live feature demonstrations,
 desktop mode switching, spotlight testing, and persistence guide.
@@ -212,7 +212,7 @@ def draw_tour(stdscr):
                 break
             continue
 
-        # Header ASCII banner
+        # Header ASCII banne
         banner_top = "  ███████╗ ██████╗ ██████╗ ████████╗███████╗██╗  ██╗    ████████╗ ██████╗ ██╗   ██╗██████╗ "
         banner_bot = "  ██╔════╝██╔═══██╗██╔══██╗╚══██╔══╝██╔════╝╚██╗██╔╝    ╚══██╔══╝██╔═══██╗██║   ██║██╔══██╗"
         tagline    = "  >> KORTEX OS :: ИНТЕРАКТИВНЫЙ ПРОВОДНИК И ТУР ПО СИСТЕМЕ (v1.0.0) <<"
@@ -251,7 +251,7 @@ def draw_tour(stdscr):
         except curses.error:
             pass
 
-        # Horizontal Divider
+        # Horizontal Divide
         try:
             stdscr.addstr(6, 1, "─" * (max_x - 2))
         except curses.error:

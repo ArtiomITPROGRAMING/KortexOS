@@ -1,19 +1,17 @@
 #!/usr/bin/env python3
 """
-KORTEX-OS UNIFIED DESIGN & PERSISTENCE CONTROL PANEL (kortex-settings)
-Commercial-grade MacBook UX + Cyberpunk interface:
-- Tab 1: PHILOSOPHY & LAYOUT (Cyber-Deck, MacBook Pro Mode, Pure Tiling)
-- Tab 2: THEME STUDIO PRO (7 Layer Colors [Base/Surface/Primary/Secondary/ActiveBorder/InactiveBorder/Critical],
-         Border Engine [Solid/Dual Gradient/Neon Loop/Glow Shadow, 0-6px, 0-20px, 0-360deg],
-         Glassmorphism & Dual-Kawase Blur [Active/Inactive/Waybar Opacity, Size 1-20, Passes 1-5, Vibrancy, X-Ray])
-- Tab 3: WALLPAPERS (5 Desktop Wallpapers & 5 Terminal Backgrounds + Dimming Slider 0%-95%)
-- Tab 4: KEYBIND MANAGER & SPOTLIGHT (Interactive Keybind Editor & Cheatsheet)
-- Tab 5: HARDWARE & PERSISTENCE (Zen Kernel Power Profiles, Eternal Profile .kortex Export/Import/Reset & Disk Install)
+KORTEX-SETTINGS: Упрощённое окно «Настройки» в один экран
+Поддерживает управление мышью и клавиатурой (↑/↓, ←/→, Enter, Пробел, 1-6):
+1. Цветовая тема (Cyber Cyan, Tokyo Night, Dracula, Matrix, Mono)
+2. Обои рабочего стола (Cyber Glass, Tokyo Horizon, Cyber Grid, Matrix, Pitch Black)
+3. Эффект матового стекла / прозрачности (Вкл / Выкл)
+4. Язык и раскладка клавиатуры (EN + RU (Alt+Shift), EN + RO, DE)
+5. Wi-Fi и Звук (/usr/local/bin/kortex-control-center / nmtui)
+6. Установка KortexOS на жёсткий диск (/usr/local/bin/kortex-open install)
 """
 
 import os
 import sys
-import time
 import json
 import curses
 import subprocess
@@ -23,63 +21,26 @@ CONF_DIR = os.path.expanduser("~/.config/kortex")
 MASTER_STATE = os.path.join(CONF_DIR, "master-state.json")
 LEGACY_STATE = os.path.join(CONF_DIR, "config.json")
 
-LAYER_COLOR_KEYS = [
-    ("base_bg",          "Base Background (Window BG)"),
-    ("surface_bg",       "Surface Layer (Cards & Panels)"),
-    ("primary_accent",   "Primary Accent (Text & Charts)"),
-    ("secondary_accent", "Secondary Accent (Gradients)"),
-    ("border_active",    "Active Border (Focused Edge)"),
-    ("border_inactive",  "Inactive Border (Unfocused Edge)"),
-    ("alert_critical",   "Critical Alert (Danger / Close)")
-]
-
-THEME_PRESETS = {
-    "cyan":       {"name": "Cyber Cyan",    "accent": "00f0ff", "sec": "0088cc", "desc": "Electric Tron neon glow (Default)"},
-    "tokyonight": {"name": "Tokyo Night",   "accent": "7aa2f7", "sec": "bb9af7", "desc": "Deep indigo and neon twilight"},
-    "dracula":    {"name": "Dracula",       "accent": "bd93f9", "sec": "ff79c6", "desc": "Gothic dark violet & neon pink"},
-    "matrix":     {"name": "Matrix",        "accent": "00ff41", "sec": "008f11", "desc": "Phosphor terminal hacker green"},
-    "amber":      {"name": "Amber CRT",     "accent": "ffb000", "sec": "cc8800", "desc": "Vintage 80s phosphor amber"},
-    "mono":       {"name": "Mono Tron",     "accent": "ffffff", "sec": "888888", "desc": "Pure stark monochrome cyber deck"},
-    "crimson":    {"name": "Crimson Alert", "accent": "ff003c", "sec": "990024", "desc": "Aggressive combat red alert HUD"}
-}
-
-GRID_MODULES = [
-    ("sys_panel",        "Sys-Panel (Telemetry Pulse)"),
-    ("terminal",         "Terminal (Center Shell)"),
-    ("globe_net",        "3D-Globe (Network Telemetry)"),
-    ("file_grid",        "File-Grid (Explorer / Yazi)"),
-    ("virtual_keyboard", "Virtual Keyboard (QWERTY Deck)")
-]
-
-SYSTEM_HOTKEYS = [
-    ("spotlight",    "Kortex Spotlight (MacBook UX)", "SUPER, SPACE"),
-    ("close",        "Close Active Window",           "SUPER, Q"),
-    ("close_alt",    "Close Window (Alt+F4)",         "ALT, F4"),
-    ("menu",         "Kortex Start Menu",             "SUPER, D"),
-    ("terminal",     "Open Terminal",                 "SUPER, RETURN"),
-    ("browser",      "Launch Web Browser",            "SUPER, B"),
-    ("file_manager", "Launch File Explorer",          "SUPER, E"),
-    ("screenshot",   "Take Screenshot (Region)",      "SUPER SHIFT, S"),
-    ("lock",         "Lock System Screen",            "SUPER, L"),
-    ("layout",       "Cycle Desktop Layout",          "SUPER, TAB"),
-    ("help_hud",     "Show Hotkeys Cheatsheet (HUD)", "SUPER, F1")
+THEME_PRESETS = [
+    ("cyan",       "Cyber Cyan"),
+    ("tokyonight", "Tokyo Night"),
+    ("dracula",    "Dracula"),
+    ("matrix",     "Matrix"),
+    ("mono",       "Mono"),
 ]
 
 DESKTOP_WALLS = [
-    ("grid",   "Cyber Grid (Vector Tron Blueprint)", "/usr/share/backgrounds/kortex/cyber_grid.png"),
-    ("glass",  "Cyber Glass (MacBook Pro Aurora)",   "/usr/share/backgrounds/kortex/cyber_glass.png"),
-    ("matrix", "Matrix Rain (Digital Phosphor)",     "/usr/share/backgrounds/kortex/matrix_rain.png"),
-    ("tokyo",  "Tokyo Horizon (Neon Synthwave)",     "/usr/share/backgrounds/kortex/tokyo_horizon.png"),
-    ("black",  "Pitch Black (OLED #000000 Zero)",    "/usr/share/backgrounds/kortex/pitch_black.png")
+    ("glass",  "Cyber Glass",   "/usr/share/backgrounds/kortex/cyber_glass.png"),
+    ("tokyo",  "Tokyo Horizon", "/usr/share/backgrounds/kortex/tokyo_horizon.png"),
+    ("grid",   "Cyber Grid",    "/usr/share/backgrounds/kortex/cyber_grid.png"),
+    ("matrix", "Matrix",        "/usr/share/backgrounds/kortex/matrix_rain.png"),
+    ("black",  "Pitch Black",   "/usr/share/backgrounds/kortex/pitch_black.png"),
 ]
 
-TERMINAL_WALLS = [
-    ("tron",     "Tron Vector Grid (Subtle Cyan Blueprint)", "/usr/share/backgrounds/kortex/term_tron_grid.png"),
-    ("matrix",   "Matrix Bit-Matrix (Dark Phosphor Code)",   "/usr/share/backgrounds/kortex/term_matrix.png"),
-    ("carbon",   "Dark Carbon Fiber (Diagonal Weave)",       "/usr/share/backgrounds/kortex/term_dark_carbon.png"),
-    ("hex",      "Hexagonal Cyber Mesh (Dark Honeycomb)",    "/usr/share/backgrounds/kortex/term_hex_mesh.png"),
-    ("obsidian", "Obsidian Scanlines (Ultra-Dark Minimal)",  "/usr/share/backgrounds/kortex/term_obsidian_wave.png"),
-    ("none",     "Disable Terminal Background Image",        "")
+KB_LAYOUTS = [
+    ("us,ru", "EN + RU (Alt+Shift)", "grp:alt_shift_toggle"),
+    ("us,ro", "EN + RO",             "grp:alt_shift_toggle"),
+    ("de",    "DE",                  "grp:alt_shift_toggle"),
 ]
 
 def load_state():
@@ -92,8 +53,11 @@ def load_state():
             pass
     subprocess.run(["/usr/local/bin/kortex-theme-apply"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if os.path.exists(MASTER_STATE):
-        with open(MASTER_STATE, "r", encoding="utf-8") as f:
-            return json.load(f)
+        try:
+            with open(MASTER_STATE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
     return {}
 
 def save_state(st):
@@ -112,6 +76,31 @@ def trigger_theme_apply(extra_args=None):
     except Exception:
         pass
 
+def get_theme_label(st):
+    cur = st.get("theme", {}).get("name", "cyan")
+    for k, label in THEME_PRESETS:
+        if k == cur:
+            return label
+    return "Cyber Cyan"
+
+def get_wallpaper_label(st):
+    path = st.get("wallpaper", {}).get("desktop", {}).get("path", "/usr/share/backgrounds/kortex/cyber_glass.png")
+    bname = os.path.basename(path)
+    for _, label, fpath in DESKTOP_WALLS:
+        if os.path.basename(fpath) == bname:
+            return label
+    return "Cyber Glass"
+
+def get_glass_enabled(st):
+    return bool(st.get("theme", {}).get("glass", {}).get("blur_enabled", True))
+
+def get_kb_label(st):
+    cur_kb = st.get("system", {}).get("kb_layout", "us,ru")
+    for k, label, _ in KB_LAYOUTS:
+        if k == cur_kb:
+            return label
+    return "EN + RU (Alt+Shift)"
+
 def safe_addstr(win, y, x, s, attr=curses.A_NORMAL):
     h, w = win.getmaxyx()
     if 0 <= y < h and 0 <= x < w:
@@ -125,7 +114,8 @@ def settings_tui(stdscr):
     stdscr.nodelay(False)
     stdscr.keypad(True)
     try:
-        curses.mousemask(curses.ALL_MOUSE_EVENTS | curses.REPORT_MOUSE_POSITION)
+        curses.mouseinterval(0)
+        curses.mousemask(curses.ALL_MOUSE_EVENTS)
     except Exception:
         pass
 
@@ -136,426 +126,161 @@ def settings_tui(stdscr):
     curses.init_pair(3, curses.COLOR_CYAN, -1)
     curses.init_pair(4, curses.COLOR_GREEN, -1)
     curses.init_pair(5, curses.COLOR_YELLOW, -1)
-    curses.init_pair(6, curses.COLOR_RED, -1)
 
-    tab_titles = [
-        "1:PHILOSOPHY",
-        "2:THEME STUDIO PRO",
-        "3:WALLPAPERS",
-        "4:KEYBINDS",
-        "5:HARDWARE & DISK"
-    ]
-    cur_tab = 1
     cur_row = 0
-    layer_idx = 2  # Default to primary_accent in 7-layer selector
-    status_msg = "Use [1-5] or [TAB] for tabs, [↑/↓] to select, [←/→/ENTER] to adjust."
+    row_y_map = {}
+    st = load_state()
+    status_msg = "Управление: [↑/↓] Выбор пункта  |  [←/→ / Enter / Клик мыши] Изменить / Открыть  |  [Q/Esc] Выход"
 
-    hex_input_mode = False
-    custom_hex_buffer = ""
+    def activate_row(row, delta):
+        nonlocal status_msg, st
+        st.setdefault("theme", {}).setdefault("glass", {})
+        st.setdefault("system", {})
+
+        if row == 0:
+            keys = [k for k, _ in THEME_PRESETS]
+            cur = st.get("theme", {}).get("name", "cyan")
+            idx = (keys.index(cur) + delta) % len(keys) if cur in keys else 0
+            nxt_key, nxt_label = THEME_PRESETS[idx]
+            trigger_theme_apply(["--theme", nxt_key])
+            st = load_state()
+            status_msg = f"Цветовая тема: {nxt_label}"
+
+        elif row == 1:
+            paths = [os.path.basename(p) for _, _, p in DESKTOP_WALLS]
+            cur_p = os.path.basename(st.get("wallpaper", {}).get("desktop", {}).get("path", "cyber_glass.png"))
+            idx = (paths.index(cur_p) + delta) % len(DESKTOP_WALLS) if cur_p in paths else 0
+            w_key, w_label, _ = DESKTOP_WALLS[idx]
+            subprocess.run(["/usr/local/bin/kortex-wallpaper", "desktop", w_key], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            st = load_state()
+            status_msg = f"Обои рабочего стола: {w_label}"
+
+        elif row == 2:
+            enabled = not get_glass_enabled(st)
+            st["theme"]["glass"]["blur_enabled"] = enabled
+            st["theme"]["glass"]["opacity_active"] = 0.95 if enabled else 1.0
+            st["theme"]["glass"]["opacity_inactive"] = 0.85 if enabled else 1.0
+            st["theme"]["glass"]["opacity_panels"] = 0.90 if enabled else 1.0
+            save_state(st)
+            trigger_theme_apply()
+            st = load_state()
+            status_msg = f"Эффект матового стекла / прозрачности: {'Вкл' if enabled else 'Выкл'}"
+
+        elif row == 3:
+            keys = [k for k, _, _ in KB_LAYOUTS]
+            cur_kb = st.get("system", {}).get("kb_layout", "us,ru")
+            idx = (keys.index(cur_kb) + delta) % len(KB_LAYOUTS) if cur_kb in keys else 0
+            kb_code, kb_label, kb_opt = KB_LAYOUTS[idx]
+            st["system"]["kb_layout"] = kb_code
+            st["system"]["kb_toggle"] = kb_opt
+            save_state(st)
+            trigger_theme_apply()
+            st = load_state()
+            status_msg = f"Язык и раскладка клавиатуры: {kb_label}"
+
+        elif row == 4:
+            if delta < 0:
+                subprocess.Popen(["kitty", "--class", "nm-connection-editor", "-e", "nmtui"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                status_msg = "Открыт менеджер сетей Wi-Fi (nmtui)"
+            else:
+                subprocess.run(["pkill", "-x", "rofi"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                subprocess.Popen(["/usr/local/bin/kortex-control-center"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                status_msg = "Открыто меню Wi-Fi и Звук"
+
+        elif row == 5:
+            curses.endwin()
+            os.makedirs("/run/kortex-persistence", exist_ok=True)
+            save_state(st)
+            try:
+                shutil.copy2(MASTER_STATE, "/run/kortex-persistence/master-state.json")
+            except Exception:
+                pass
+            subprocess.Popen(["/usr/local/bin/kortex-open", "install"])
+            sys.exit(0)
 
     while True:
         try:
             h, w = stdscr.getmaxyx()
             stdscr.erase()
-            st = load_state()
 
-            border_top = "┌───[ KORTEX-OS THEME STUDIO PRO & PERSISTENCE ENGINE // v3.5 ]" + "─" * max(0, w - 66) + "┐"
+            border_top = "┌───[ ⚙️ НАСТРОЙКИ СИСТЕМЫ KORTEXOS ]" + "─" * max(0, w - 39) + "┐"
             safe_addstr(stdscr, 0, 1, border_top, curses.color_pair(3) | curses.A_BOLD)
+            if h >= 18:
+                safe_addstr(stdscr, 1, 3, "Простая настройка внешнего вида, раскладки, сети и установки ОС в один экран", curses.color_pair(1))
+                safe_addstr(stdscr, 2, 1, "├" + "─" * max(1, w - 3) + "┤", curses.color_pair(3))
 
-            tab_x = 3
-            for i, title in enumerate(tab_titles):
-                attr = curses.color_pair(2) | curses.A_BOLD if i == cur_tab else curses.color_pair(1)
-                safe_addstr(stdscr, 1, tab_x, f" {title} ", attr)
-                tab_x += len(title) + 3
-            safe_addstr(stdscr, 2, 1, "├" + "─" * max(1, w - 3) + "┤", curses.color_pair(1))
+            glass_on = get_glass_enabled(st)
+            rows = [
+                ("1. 🎨 Цветовая тема",                  f"◄  {get_theme_label(st):^22}  ►", "Cyber Cyan, Tokyo Night, Dracula, Matrix, Mono"),
+                ("2. 🖼️ Обои рабочего стола",            f"◄  {get_wallpaper_label(st):^22}  ►", "Cyber Glass, Tokyo Horizon, Cyber Grid, Matrix, Pitch Black"),
+                ("3. ✨ Матовое стекло и прозрачность",   f"◄  {'Вкл' if glass_on else 'Выкл':^22}  ►", "Размытие фона и прозрачность окон (Вкл / Выкл)"),
+                ("4. ⌨️ Язык и раскладка клавиатуры",    f"◄  {get_kb_label(st):^22}  ►", "Переключение раскладки: EN + RU (Alt+Shift), EN + RO, DE"),
+                ("5. 🎛️ Wi-Fi и Звук",                   "[ Открыть Звук и Сеть / nmtui ]", "Настройка громкости, яркости, Wi-Fi и Bluetooth"),
+                ("6. 💿 Установка KortexOS на диск",      "[ Запустить установщик ОС ]", "Установить систему на жёсткий диск или SSD с вашими настройками"),
+            ]
 
-            # ==================================================================
-            # TAB 0: PHILOSOPHY & LAYOUT
-            # ==================================================================
-            if cur_tab == 0:
-                cur_phil = st.get("interface", {}).get("philosophy", "cyberdeck")
-                safe_addstr(stdscr, 4, 4, "PRIMARY DESKTOP UX MODE (Switch anytime with Super + Tab):", curses.color_pair(3) | curses.A_BOLD)
+            row_y_map.clear()
+            if h >= 24:
+                y, row_step, show_desc = 4, 3, True
+            elif h >= 18:
+                y, row_step, show_desc = 3, 2, True
+            else:
+                y, row_step, show_desc = 1, 1, False
 
-                phil_items = [
-                    ("cyberdeck", "Cyber-Deck (5-Panel eDEX Grid)",  "5-module hacker HUD: Telemetry, Terminal, 3D Globe, File Grid & Virtual Keyboard"),
-                    ("macbook",   "MacBook Pro Mode (Glass & Dock)", "Floating windows with Kawase blur, top bar, bottom Dock & [ _ ][ □ ][ ✕ ] buttons"),
-                    ("tiling",    "Pro Developer (Pure Tiling)",     "Full-screen dwindle tiling without overlays or virtual keyboard")
-                ]
-                row_idx = 0
-                for p_key, p_name, p_desc in phil_items:
-                    is_active = (cur_phil == p_key)
-                    is_sel = (cur_row == row_idx)
-                    marker = "● " if is_active else "○ "
-                    attr = curses.color_pair(2) if is_sel else (curses.color_pair(4) | curses.A_BOLD if is_active else curses.color_pair(1))
-                    safe_addstr(stdscr, 6 + (row_idx * 3), 6, f"{marker}{p_name:<42}", attr)
-                    safe_addstr(stdscr, 7 + (row_idx * 3), 10, p_desc, curses.color_pair(1))
-                    row_idx += 1
+            val_x = min(44, max(26, w - 34))
+            bar_w = max(1, min(76, w - 4))
 
-                safe_addstr(stdscr, 16, 4, "CYBER-DECK STARTER WIDGETS (Toggle modules on Workspace 1):", curses.color_pair(3) | curses.A_BOLD)
-                widgets = st.get("grid_widgets", {})
-                for mod_id, mod_name in GRID_MODULES:
-                    is_sel = (cur_row == row_idx)
-                    is_on = widgets.get(mod_id, True)
-                    check = "[x]" if is_on else "[ ]"
-                    attr = curses.color_pair(2) if is_sel else (curses.color_pair(4) if is_on else curses.color_pair(1))
-                    safe_addstr(stdscr, 18 + (row_idx - 3), 6, f"{check} {mod_name}", attr)
-                    row_idx += 1
+            for idx, (title, val_str, desc) in enumerate(rows):
+                is_sel = (idx == cur_row)
+                prefix = " ▶ " if is_sel else "   "
+                attr_main = curses.color_pair(2) | curses.A_BOLD if is_sel else curses.color_pair(1) | curses.A_BOLD
+                attr_val = curses.color_pair(2) | curses.A_BOLD if is_sel else curses.color_pair(4) | curses.A_BOLD
+                if is_sel:
+                    safe_addstr(stdscr, y, 2, " " * bar_w, attr_main)
+                safe_addstr(stdscr, y, 2, f"{prefix}{title}", attr_main)
+                safe_addstr(stdscr, y, val_x, val_str, attr_val)
+                row_y_map[y] = idx
+                if show_desc:
+                    safe_addstr(stdscr, y + 1, 8, desc, curses.color_pair(3) if is_sel else curses.color_pair(1))
+                    row_y_map[y + 1] = idx
+                y += row_step
 
-            # ==================================================================
-            # TAB 1: THEME STUDIO PRO (7 Layer Colors, Borders, Glass & Blur)
-            # ==================================================================
-            elif cur_tab == 1:
-                th = st.get("theme", {})
-                pal = th.get("palette", {})
-                borders = th.get("borders", {})
-                glass = th.get("glass", {})
-
-                cur_name = th.get("name", "cyan")
-                l_key, l_label = LAYER_COLOR_KEYS[layer_idx]
-                l_val = pal.get(l_key, "#00f0ff")
-
-                b_size = int(borders.get("size", 2))
-                b_round = int(borders.get("rounding", 6))
-                b_mode = borders.get("mode", "dual_gradient")
-                b_angle = int(borders.get("gradient_angle", 45))
-                g_radius = int(borders.get("glow_radius", 15))
-
-                act_op = float(glass.get("opacity_active", 0.95))
-                inact_op = float(glass.get("opacity_inactive", 0.85))
-                panel_op = float(glass.get("opacity_panels", 0.90))
-                blur = bool(glass.get("blur_enabled", True))
-                blur_size = int(glass.get("blur_size", 8))
-                blur_passes = int(glass.get("blur_passes", 3))
-                blur_vib = float(glass.get("blur_vibrancy", 0.1696))
-                xray = bool(glass.get("xray", False))
-
-                safe_addstr(stdscr, 3, 4, "🎨 7-LAYER COLOR ENGINE & PRESETS (←/→ to cycle, ENTER to edit HEX):", curses.color_pair(3) | curses.A_BOLD)
-                # Show all 7 layer colors summary bar
-                summary_7 = (
-                    f"Base:{pal.get('base_bg','#0a0c10')} Surf:{pal.get('surface_bg','#12161f')} "
-                    f"Pri:{pal.get('primary_accent','#00f0ff')} Sec:{pal.get('secondary_accent','#0088cc')} "
-                    f"ActB:{pal.get('border_active','#00f0ff')} InB:{pal.get('border_inactive','#1b2430')} "
-                    f"Crit:{pal.get('alert_critical','#ff003c')}"
-                )
-                safe_addstr(stdscr, 4, 6, summary_7, curses.color_pair(4))
-
-                items_t1 = [
-                    (f"Theme Preset       : [ {cur_name.upper():<12} ]", "←/→ cycle: Cyan / TokyoNight / Dracula / Matrix / Amber / Mono / Crimson"),
-                    (f"Select Color Layer : [ {l_label:<30} ]", f"Current: {l_val} (←/→ switch layer 1-7)"),
-                    (f"Edit Layer HEX/RGB : [ #{custom_hex_buffer if hex_input_mode else l_val.lstrip('#'):<8} ]", "[TYPING HEX...]" if hex_input_mode else "Press ENTER to type custom HEX for selected layer"),
-                    (f"Border Mode        : [ {b_mode.upper():<14} ]", "Solid / Dual Gradient / Animated Neon Loop / Drop Shadow Glow"),
-                    (f"Border Thickness   : [ {b_size}px ]", "Range: 0px - 6px"),
-                    (f"Corner Rounding    : [ {b_round}px ]", "Range: 0px (Sharp Cyberpunk) - 20px (macOS Rounded)"),
-                    (f"Gradient Angle     : [ {b_angle}° ]", "Range: 0° - 360° (Dual Gradient & Neon Loop)"),
-                    (f"Glow / Shadow Rad  : [ {g_radius}px ]", "Range: 5px - 40px (Drop Shadow / Neon Glow)"),
-                    (f"Active Win Opacity : [ {int(act_op*100)}% ({act_op:.2f}) ]", "Range: 0.50 - 1.00"),
-                    (f"Inactive Opacity   : [ {int(inact_op*100)}% ({inact_op:.2f}) ]", "Range: 0.30 - 1.00"),
-                    (f"Waybar Opacity     : [ {int(panel_op*100)}% ({panel_op:.2f}) ]", "Range: 0.30 - 1.00"),
-                    (f"Dual-Kawase Blur   : [ {'ENABLED' if blur else 'DISABLED':<8} ]", "Frosted glass background blur"),
-                    (f"Blur Size (1-20)   : [ {blur_size} ]", "Dual-Kawase blur radius (1 - 20)"),
-                    (f"Blur Passes (1-5)  : [ {blur_passes} ]", "Dual-Kawase blur passes (1 - 5)"),
-                    (f"Blur Vibrancy/XRay : [ Vib:{blur_vib:.2f} / XRay:{'ON' if xray else 'OFF'} ]", "←/→ adjust vibrancy, ENTER toggle X-Ray")
-                ]
-                for idx, (lbl, desc) in enumerate(items_t1):
-                    is_sel = (cur_row == idx)
-                    attr = curses.color_pair(2) | curses.A_BOLD if is_sel else curses.color_pair(1)
-                    safe_addstr(stdscr, 6 + idx, 6, f"{lbl:<50} {desc}", attr)
-
-            # ==================================================================
-            # TAB 2: WALLPAPERS (5 DESKTOP + 5 TERMINAL + DIMMING SLIDER)
-            # ==================================================================
-            elif cur_tab == 2:
-                wp = st.get("wallpaper", {})
-                desk_path = wp.get("desktop", {}).get("path", "/usr/share/backgrounds/kortex/cyber_grid.png")
-                term_wp = wp.get("terminal", {})
-                term_path = term_wp.get("image_path", "") if term_wp.get("image_enabled") else "Disabled"
-                term_dim = float(term_wp.get("dimming", 0.75))
-
-                safe_addstr(stdscr, 3, 4, f"🖼️ GLOBAL DESKTOP WALLPAPERS (/usr/share/backgrounds/kortex/):", curses.color_pair(3) | curses.A_BOLD)
-                row_idx = 0
-                for p_key, p_label, p_fpath in DESKTOP_WALLS:
-                    is_sel = (cur_row == row_idx)
-                    is_active = (os.path.basename(p_fpath) == os.path.basename(desk_path))
-                    marker = "● " if is_active else "○ "
-                    attr = curses.color_pair(2) if is_sel else (curses.color_pair(4) | curses.A_BOLD if is_active else curses.color_pair(1))
-                    safe_addstr(stdscr, 5 + row_idx, 6, f"{marker}{p_label:<44} [{os.path.basename(p_fpath)}]", attr)
-                    row_idx += 1
-
-                safe_addstr(stdscr, 11, 4, "💻 PER-APP KITTY TERMINAL WALLPAPERS (Instant SIGUSR1 Reload):", curses.color_pair(3) | curses.A_BOLD)
-                for t_key, t_label, t_fpath in TERMINAL_WALLS:
-                    is_sel = (cur_row == row_idx)
-                    is_active = (t_key == "none" and not term_wp.get("image_enabled")) or (t_fpath and os.path.basename(t_fpath) == os.path.basename(term_path))
-                    marker = "● " if is_active else "○ "
-                    attr = curses.color_pair(2) if is_sel else (curses.color_pair(4) | curses.A_BOLD if is_active else curses.color_pair(1))
-                    safe_addstr(stdscr, 13 + (row_idx - 5), 6, f"{marker}{t_label:<44}", attr)
-                    row_idx += 1
-
-                is_sel = (cur_row == row_idx)
-                bar_filled = int((term_dim / 0.95) * 20)
-                slider_bar = "█" * bar_filled + "░" * (20 - bar_filled)
-                attr = curses.color_pair(2) | curses.A_BOLD if is_sel else curses.color_pair(5) | curses.A_BOLD
-                safe_addstr(stdscr, 20, 6, f"🎚️ Terminal Wallpaper Dimming (0%-95%) : [{slider_bar}] {int(term_dim*100)}% (←/→ Adjust)", attr)
-
-            # ==================================================================
-            # TAB 3: KEYBIND MANAGER & SPOTLIGHT
-            # ==================================================================
-            elif cur_tab == 3:
-                hotkeys = st.get("hotkeys", {})
-                safe_addstr(stdscr, 4, 4, "⌨ VISUAL KEYBIND MANAGER & MACBOOK SPOTLIGHT:", curses.color_pair(3) | curses.A_BOLD)
-                for idx, (key_id, name, def_bind) in enumerate(SYSTEM_HOTKEYS):
-                    cur_bind = hotkeys.get(key_id, def_bind)
-                    is_sel = (cur_row == idx)
-                    attr = curses.color_pair(2) if is_sel else curses.color_pair(1)
-                    safe_addstr(stdscr, 6 + idx, 6, f"[{cur_bind:^20}]  :  {name}", attr)
-                safe_addstr(stdscr, 18, 6, "Press [R] to reset all keybindings to factory defaults", curses.color_pair(5))
-
-            # ==================================================================
-            # TAB 4: HARDWARE & ETERNAL PROFILE PERSISTENCE
-            # ==================================================================
-            elif cur_tab == 4:
-                pwr = st.get("system", {}).get("power_profile", "balanced")
-                safe_addstr(stdscr, 4, 4, "⚡ ZEN KERNEL HARDWARE POWER PROFILE:", curses.color_pair(3) | curses.A_BOLD)
-                pwr_items = [
-                    ("balanced",    "Balanced (Adaptive Schedutil)", "Optimal thermals and smooth 60fps animations"),
-                    ("performance", "Overdrive (Maximum Frequency)", "Zero-latency performance for heavy compilation & 3D"),
-                    ("powersave",   "Eco Mode (Battery Saver)",      "Low power governor for extended laptop runtime")
-                ]
-                row_idx = 0
-                for p_key, p_label, p_desc in pwr_items:
-                    is_sel = (cur_row == row_idx)
-                    is_active = (pwr == p_key)
-                    marker = "● " if is_active else "○ "
-                    attr = curses.color_pair(2) if is_sel else (curses.color_pair(4) | curses.A_BOLD if is_active else curses.color_pair(1))
-                    safe_addstr(stdscr, 6 + (row_idx * 2), 6, f"{marker}{p_label:<34} {p_desc}", attr)
-                    row_idx += 1
-
-                safe_addstr(stdscr, 13, 4, "💾 ETERNAL PROFILE (.kortex) & DISK INSTALLATION:", curses.color_pair(3) | curses.A_BOLD)
-                persist_items = [
-                    ("Export Eternal Profile (~/my-kortex-setup.kortex)", "Bundles master-state.json + custom wallpapers into .kortex archive"),
-                    ("Import Eternal Profile (~/my-kortex-setup.kortex)", "Restores master-state.json + wallpapers from .kortex archive"),
-                    ("Re-run Initial Setup Wizard (kortex-oobe)", "Launch fullscreen 5-step OOBE setup wizard"),
-                    ("Reset to Factory Defaults", "Restore clean initial KortexOS configuration"),
-                    ("INSTALL TO DISK (WITH CURRENT SETTINGS)", "Transfer master-state.json directly into target hard drive OS")
-                ]
-                for label, desc in persist_items:
-                    is_sel = (cur_row == row_idx)
-                    attr = curses.color_pair(2) if is_sel else curses.color_pair(1)
-                    safe_addstr(stdscr, 15 + (row_idx - 3), 6, f"[ {label:<46} ] {desc}", attr)
-                    row_idx += 1
-
-            # Footer
-            safe_addstr(stdscr, h - 3, 1, "└" + "─" * max(1, w - 3) + "┘", curses.color_pair(1))
-            safe_addstr(stdscr, h - 2, 3, status_msg[:max(1, w - 6)], curses.color_pair(4) | curses.A_BOLD)
+            if h >= 10:
+                safe_addstr(stdscr, h - 3, 1, "└" + "─" * max(1, w - 3) + "┘", curses.color_pair(3))
+            safe_addstr(stdscr, max(0, h - 2), 3, status_msg[:max(1, w - 6)], curses.color_pair(5) | curses.A_BOLD)
             stdscr.refresh()
-
-            if hex_input_mode:
-                ch = stdscr.getch()
-                if ch in (10, 13, curses.KEY_ENTER):
-                    hex_input_mode = False
-                    val = custom_hex_buffer.replace("#", "").strip()
-                    if len(val) == 6 and all(c in "0123456789abcdefABCDEF" for c in val):
-                        l_key, l_label = LAYER_COLOR_KEYS[layer_idx]
-                        st["theme"]["palette"][l_key] = f"#{val}"
-                        st["theme"]["name"] = "custom"
-                        save_state(st)
-                        trigger_theme_apply()
-                        status_msg = f"Updated {l_label} -> #{val} (Live Applied!)"
-                    else:
-                        status_msg = f"Invalid HEX '{val}'. Expected 6 hex digits (e.g. 00f0ff)."
-                    custom_hex_buffer = ""
-                elif ch == 27:
-                    hex_input_mode = False
-                    custom_hex_buffer = ""
-                    status_msg = "HEX input cancelled."
-                elif ch in (curses.KEY_BACKSPACE, 127, 8):
-                    custom_hex_buffer = custom_hex_buffer[:-1]
-                elif 0 <= ch < 256 and chr(ch) in "0123456789abcdefABCDEF":
-                    if len(custom_hex_buffer) < 6:
-                        custom_hex_buffer += chr(ch).lower()
-                continue
 
             ch = stdscr.getch()
             if ch in (ord('q'), ord('Q'), 27):
                 break
-            elif ch in (ord('1'), ord('2'), ord('3'), ord('4'), ord('5')):
-                cur_tab = ch - ord('1')
-                cur_row = 0
-            elif ch == ord('\t'):
-                cur_tab = (cur_tab + 1) % 5
-                cur_row = 0
             elif ch == curses.KEY_UP:
-                cur_row = max(0, cur_row - 1)
+                cur_row = (cur_row - 1) % len(rows)
             elif ch == curses.KEY_DOWN:
-                max_rows = {0: 7, 1: 14, 2: 11, 3: len(SYSTEM_HOTKEYS) - 1, 4: 7}[cur_tab]
-                cur_row = min(max_rows, cur_row + 1)
-            elif ch in (10, 13, curses.KEY_ENTER, ord(' '), curses.KEY_LEFT, curses.KEY_RIGHT):
-                delta = -1 if ch == curses.KEY_LEFT else 1
-
-                if cur_tab == 0:
-                    if cur_row == 0:
-                        subprocess.run(["/usr/local/bin/kortex-layout", "grid"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                        status_msg = "Activated Cyber-Deck (5-Panel eDEX Grid)."
-                    elif cur_row == 1:
-                        subprocess.run(["/usr/local/bin/kortex-layout", "floating"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                        status_msg = "Activated MacBook Pro Mode (Glass, Top Bar & Dock)."
-                    elif cur_row == 2:
-                        subprocess.run(["/usr/local/bin/kortex-layout", "tiling"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                        status_msg = "Activated Pro Developer (Pure Tiling)."
-                    elif 3 <= cur_row < 3 + len(GRID_MODULES):
-                        mod_id, mod_name = GRID_MODULES[cur_row - 3]
-                        st["grid_widgets"][mod_id] = not st["grid_widgets"].get(mod_id, True)
-                        save_state(st)
-                        subprocess.run(["/usr/local/bin/kortex-grid-init", "--force-grid"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                        status_msg = f"Toggled Cyber-Deck widget: {mod_name}"
-
-                elif cur_tab == 1:
-                    if cur_row == 0:
-                        p_keys = list(THEME_PRESETS.keys())
-                        cur_p = st["theme"].get("name", "cyan")
-                        idx_p = (p_keys.index(cur_p) + delta) % len(p_keys) if cur_p in p_keys else 0
-                        nxt_p = p_keys[idx_p]
-                        trigger_theme_apply(["--theme", nxt_p])
-                        status_msg = f"Applied Palette Preset: {THEME_PRESETS[nxt_p]['name']}"
-                    elif cur_row == 1:
-                        layer_idx = (layer_idx + delta) % len(LAYER_COLOR_KEYS)
-                        status_msg = f"Selected Layer: {LAYER_COLOR_KEYS[layer_idx][1]}"
-                    elif cur_row == 2:
-                        if ch in (10, 13, curses.KEY_ENTER, ord(' ')):
-                            hex_input_mode = True
-                            custom_hex_buffer = ""
-                            status_msg = f"Type 6-digit HEX for {LAYER_COLOR_KEYS[layer_idx][1]} and press ENTER:"
-                        else:
-                            layer_idx = (layer_idx + delta) % len(LAYER_COLOR_KEYS)
-                    elif cur_row == 3:
-                        modes = ["solid", "dual_gradient", "neon_loop", "glow_shadow"]
-                        cur_m = st["theme"]["borders"].get("mode", "dual_gradient")
-                        nxt_m = modes[(modes.index(cur_m) + delta) % len(modes)] if cur_m in modes else "dual_gradient"
-                        st["theme"]["borders"]["mode"] = nxt_m
-                        save_state(st)
-                        trigger_theme_apply()
-                        status_msg = f"Border Style: {nxt_m.upper()}"
-                    elif cur_row == 4:
-                        v = max(0, min(6, int(st["theme"]["borders"].get("size", 2)) + delta))
-                        st["theme"]["borders"]["size"] = v
-                        save_state(st)
-                        trigger_theme_apply()
-                        status_msg = f"Border Thickness: {v}px"
-                    elif cur_row == 5:
-                        v = max(0, min(20, int(st["theme"]["borders"].get("rounding", 6)) + delta))
-                        st["theme"]["borders"]["rounding"] = v
-                        save_state(st)
-                        trigger_theme_apply()
-                        status_msg = f"Corner Rounding: {v}px"
-                    elif cur_row == 6:
-                        v = (int(st["theme"]["borders"].get("gradient_angle", 45)) + delta * 15) % 360
-                        st["theme"]["borders"]["gradient_angle"] = v
-                        save_state(st)
-                        trigger_theme_apply()
-                        status_msg = f"Gradient Angle: {v}°"
-                    elif cur_row == 7:
-                        v = max(5, min(40, int(st["theme"]["borders"].get("glow_radius", 15)) + delta * 2))
-                        st["theme"]["borders"]["glow_radius"] = v
-                        save_state(st)
-                        trigger_theme_apply()
-                        status_msg = f"Glow / Shadow Radius: {v}px"
-                    elif cur_row == 8:
-                        v = max(0.50, min(1.00, round(float(st["theme"]["glass"].get("opacity_active", 0.95)) + delta * 0.05, 2)))
-                        st["theme"]["glass"]["opacity_active"] = v
-                        save_state(st)
-                        trigger_theme_apply()
-                        status_msg = f"Active Window Opacity: {int(v*100)}%"
-                    elif cur_row == 9:
-                        v = max(0.30, min(1.00, round(float(st["theme"]["glass"].get("opacity_inactive", 0.85)) + delta * 0.05, 2)))
-                        st["theme"]["glass"]["opacity_inactive"] = v
-                        save_state(st)
-                        trigger_theme_apply()
-                        status_msg = f"Inactive Window Opacity: {int(v*100)}%"
-                    elif cur_row == 10:
-                        v = max(0.30, min(1.00, round(float(st["theme"]["glass"].get("opacity_panels", 0.90)) + delta * 0.05, 2)))
-                        st["theme"]["glass"]["opacity_panels"] = v
-                        save_state(st)
-                        trigger_theme_apply()
-                        status_msg = f"Waybar Panel Opacity: {int(v*100)}%"
-                    elif cur_row == 11:
-                        st["theme"]["glass"]["blur_enabled"] = not bool(st["theme"]["glass"].get("blur_enabled", True))
-                        save_state(st)
-                        trigger_theme_apply()
-                        status_msg = f"Dual-Kawase Blur: {'ENABLED' if st['theme']['glass']['blur_enabled'] else 'DISABLED'}"
-                    elif cur_row == 12:
-                        v = max(1, min(20, int(st["theme"]["glass"].get("blur_size", 8)) + delta))
-                        st["theme"]["glass"]["blur_size"] = v
-                        save_state(st)
-                        trigger_theme_apply()
-                        status_msg = f"Kawase Blur Size: {v}"
-                    elif cur_row == 13:
-                        v = max(1, min(5, int(st["theme"]["glass"].get("blur_passes", 3)) + delta))
-                        st["theme"]["glass"]["blur_passes"] = v
-                        save_state(st)
-                        trigger_theme_apply()
-                        status_msg = f"Kawase Blur Passes: {v}"
-                    elif cur_row == 14:
-                        if ch in (10, 13, curses.KEY_ENTER, ord(' ')):
-                            st["theme"]["glass"]["xray"] = not bool(st["theme"]["glass"].get("xray", False))
-                        else:
-                            v = max(0.0, min(1.0, round(float(st["theme"]["glass"].get("blur_vibrancy", 0.17)) + delta * 0.05, 2)))
-                            st["theme"]["glass"]["blur_vibrancy"] = v
-                        save_state(st)
-                        trigger_theme_apply()
-                        status_msg = f"Updated Blur Vibrancy ({st['theme']['glass']['blur_vibrancy']:.2f}) & X-Ray ({st['theme']['glass']['xray']})"
-
-                elif cur_tab == 2:
-                    if 0 <= cur_row < 5:
-                        w_key, w_label, _ = DESKTOP_WALLS[cur_row]
-                        subprocess.run(["/usr/local/bin/kortex-wallpaper", "desktop", w_key], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                        status_msg = f"Applied Desktop Wallpaper: {w_label}"
-                    elif 5 <= cur_row < 11:
-                        t_key, t_label, _ = TERMINAL_WALLS[cur_row - 5]
-                        dim = st.get("wallpaper", {}).get("terminal", {}).get("dimming", 0.75)
-                        subprocess.run(["/usr/local/bin/kortex-wallpaper", "terminal", t_key, str(dim)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                        status_msg = f"Applied Kitty Terminal Wallpaper: {t_label} (SIGUSR1 reloaded)"
-                    elif cur_row == 11:
-                        cur_dim = float(st.get("wallpaper", {}).get("terminal", {}).get("dimming", 0.75))
-                        new_dim = max(0.0, min(0.95, round(cur_dim + delta * 0.05, 2)))
-                        t_path = st.get("wallpaper", {}).get("terminal", {}).get("image_path", "tron")
-                        if not st.get("wallpaper", {}).get("terminal", {}).get("image_enabled"):
-                            t_path = "tron"
-                        subprocess.run(["/usr/local/bin/kortex-wallpaper", "terminal", t_path, str(new_dim)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                        status_msg = f"Terminal Wallpaper Dimming: {int(new_dim*100)}% (SIGUSR1 reloaded)"
-
-                elif cur_tab == 4:
-                    if cur_row in (0, 1, 2):
-                        pwrs = ["balanced", "performance", "powersave"]
-                        st["system"]["power_profile"] = pwrs[cur_row]
-                        save_state(st)
-                        status_msg = f"Power Profile set to: {pwrs[cur_row].upper()}"
-                    elif cur_row == 3:
-                        exp_path = os.path.expanduser("~/my-kortex-setup.kortex")
-                        subprocess.run(["/usr/local/bin/kortex-profile", "export", exp_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                        status_msg = f"Exported Eternal Profile + Wallpapers to {exp_path}"
-                    elif cur_row == 4:
-                        imp_path = os.path.expanduser("~/my-kortex-setup.kortex")
-                        if os.path.exists(imp_path):
-                            subprocess.run(["/usr/local/bin/kortex-profile", "import", imp_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                            status_msg = f"Imported Eternal Profile from {imp_path}"
-                        else:
-                            status_msg = f"No archive found at {imp_path} — export one first."
-                    elif cur_row == 5:
-                        subprocess.Popen(["kitty", "--class", "kortex-oobe", "--title", "KORTEX-OS SETUP", "-e", "/usr/local/bin/kortex-oobe", "--force"])
-                        status_msg = "Launched Kortex OOBE Setup Wizard."
-                    elif cur_row == 6:
-                        subprocess.run(["/usr/local/bin/kortex-profile", "reset"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                        status_msg = "Factory defaults restored."
-                    elif cur_row == 7:
-                        curses.endwin()
-                        os.makedirs("/run/kortex-persistence", exist_ok=True)
-                        save_state(st)
-                        shutil.copy2(MASTER_STATE, "/run/kortex-persistence/master-state.json")
-                        if os.path.exists("/usr/local/bin/kortex-install"):
-                            subprocess.run(["/usr/local/bin/kortex-install"])
-                        sys.exit(0)
+                cur_row = (cur_row + 1) % len(rows)
+            elif ord('1') <= ch <= ord('6'):
+                cur_row = ch - ord('1')
+                activate_row(cur_row, 1)
+            elif ch == curses.KEY_LEFT:
+                activate_row(cur_row, -1)
+            elif ch in (curses.KEY_RIGHT, 10, 13, curses.KEY_ENTER, ord(' ')):
+                activate_row(cur_row, 1)
+            elif ch == curses.KEY_MOUSE:
+                try:
+                    _, mx, my, _, bstate = curses.getmouse()
+                    if my in row_y_map:
+                        cur_row = row_y_map[my]
+                        if bstate & (curses.BUTTON1_PRESSED | curses.BUTTON1_CLICKED | curses.BUTTON1_DOUBLE_CLICKED):
+                            if cur_row in (0, 1, 2, 3) and val_x <= mx <= val_x + 4:
+                                activate_row(cur_row, -1)
+                            elif cur_row == 4 and mx >= val_x + 22:
+                                activate_row(cur_row, -1)
+                            else:
+                                activate_row(cur_row, 1)
+                except Exception:
+                    pass
 
         except Exception as e:
-            status_msg = f"Notice: {e}"
+            status_msg = f"Примечание: {e}"
 
 def main():
     if "--apply" in sys.argv or "-a" in sys.argv:

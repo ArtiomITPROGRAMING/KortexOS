@@ -61,19 +61,18 @@ if command -v rofi >/dev/null 2>&1; then
     }
     " -dmenu -i -p "┌─[ KORTEX HOTKEYS // ГОРЯЧИЕ КЛАВИШИ (Super+F1) ]" << 'EOF'
 [ Super + Space / Win+R ]  Spotlight: Поиск программ, файлов и калькулятор
-[ Super + D ]              Меню Пуск (Windows / Mac Launchpad)
+[ Super + D ]              Меню Пуск (Быстрый запуск и список программ)
 [ Alt + Tab ]              Переключение между открытыми окнами
-[ Super + Tab ]            Смена режима стола (Mac+Win Док / Кибер-Сетка / Тайлинг)
 [ Super + Q / Alt + F4 ]   Закрыть активное окно (или кнопка [ ✕ ] сверху)
 [ Ctrl + Shift + Esc ]     Диспетчер задач (Task Manager / btop)
-[ Super + C / Win + X ]    Центр Управления (Звук, Яркость, Wi-Fi, Bluetooth)
+[ Super + C / Win + X ]    Звук и Сеть (Громкость, Яркость, Wi-Fi, Bluetooth)
 [ Super + Return ]         Открыть Терминал (Kitty)
 [ Super + B ]              Запустить Браузер (Firefox)
 [ Super + E ]              Проводник файлов (Yazi)
-[ Super + S ]              Настройки, Темы, Стекло и Обои (Theme Studio Pro)
+[ Super + S ]              Настройки системы (Тема, Обои, Стекло, Раскладка, Wi-Fi)
 [ Super + P ]              Магазин программ (Kortex App Hub)
 [ Super + A ]              ИИ-Ассистент (Kortex AI)
-[ Super + V ]              Сделать окно плавающим / тайлинговым (или [ _ ] сверху)
+[ Super + V ]              Сделать окно плавающим / тайлинговым
 [ Super + F ]              Развернуть окно на весь экран (или [ □ ] сверху)
 [ Super + L ]              Заблокировать экран (Kortex Lock)
 [ Super + Shift + S ]      Скриншот выделенной области в буфер обмена
@@ -86,9 +85,8 @@ else
     echo "========================================================"
     echo "         KORTEX-OS HOTKEY QUICK REFERENCE               "
     echo "========================================================"
-    echo "  Super + Tab           : Switch Mode (Grid/Tiling/Float)"
-    echo "  Super + Return        : Launch Cyber Terminal"
-    echo "  Super + D / Tap Super : Start Menu"
+    echo "  Super + Return        : Launch Terminal"
+    echo "  Super + D             : Start Menu"
     echo "  Super + Q / Alt + F4  : Close Active Window"
     echo "  Super + S             : Kortex Settings"
     echo "  Super + A             : Kortex AI Assistant"

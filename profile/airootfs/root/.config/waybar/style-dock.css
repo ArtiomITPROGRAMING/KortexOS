@@ -1,4 +1,4 @@
-/* KORTEX-OS MACBOOK PRO INTERACTIVE GLASS DOCK */
+/* KORTEX-OS BOTTOM GLASS DOCK */
 * {
     border: none;
     font-family: "JetBrainsMono Nerd Font", "JetBrains Mono", monospace;
@@ -12,9 +12,8 @@ window#waybar {
     margin: 0px 0px 8px 0px;
     padding: 4px 10px;
 }
-#custom-dock-launchpad, #custom-dock-term, #custom-dock-browser, #custom-dock-files,
-#custom-dock-gram, #custom-dock-ai, #custom-dock-music, #custom-dock-store,
-#custom-dock-settings, #custom-dock-ctrl, #custom-dock-install {
+#custom-dock-browser, #custom-dock-files, #custom-dock-term,
+#custom-dock-store, #custom-dock-settings, #custom-dock-install {
     background: rgba(18, 22, 31, 0.92);
     color: #00f0ff;
     border: 1px solid #0088cc;
@@ -22,10 +21,8 @@ window#waybar {
     padding: 4px 12px;
     margin: 4px 4px;
 }
-#custom-dock-launchpad:hover, #custom-dock-term:hover, #custom-dock-browser:hover,
-#custom-dock-files:hover, #custom-dock-gram:hover, #custom-dock-ai:hover,
-#custom-dock-music:hover, #custom-dock-store:hover, #custom-dock-settings:hover,
-#custom-dock-ctrl:hover, #custom-dock-install:hover {
+#custom-dock-browser:hover, #custom-dock-files:hover, #custom-dock-term:hover,
+#custom-dock-store:hover, #custom-dock-settings:hover, #custom-dock-install:hover {
     background: #00f0ff;
     color: #0a0c10;
 }

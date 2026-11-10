@@ -5,21 +5,14 @@
     "accent_color": "00f0ff",
     "inactive_color": "003344",
     "border_size": 2,
-    "rounding": 4,
+    "rounding": 6,
     "gaps_in": 6,
     "gaps_out": 10,
     "blur": true,
     "opacity": 0.95,
     "animations": "smooth"
   },
-  "layout": "grid",
-  "grid_widgets": {
-    "sys_panel": true,
-    "terminal": true,
-    "globe_net": true,
-    "file_grid": true,
-    "virtual_keyboard": true
-  },
+  "layout": "tiling",
   "hotkeys": {
     "close": "SUPER, Q",
     "close_alt": "ALT, F4",
@@ -29,7 +22,6 @@
     "file_manager": "SUPER, E",
     "screenshot": "SUPER SHIFT, S",
     "lock": "SUPER, L",
-    "layout": "SUPER, TAB",
     "help_hud": "SUPER, F1",
     "settings": "SUPER, S",
     "ai": "SUPER, A",

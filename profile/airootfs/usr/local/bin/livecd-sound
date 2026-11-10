@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-or-late
 
 usage() {
     cat <<-_EOF_

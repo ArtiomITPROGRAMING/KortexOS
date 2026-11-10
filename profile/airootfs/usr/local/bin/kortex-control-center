@@ -1,13 +1,6 @@
 #!/usr/bin/env python3
 """
-KORTEX-CONTROL-CENTER: Dropdown MacBook-style Control Center
-Controls:
-- Audio Volume (PipeWire / wpctl)
-- Screen Brightness (brightnessctl)
-- Wi-Fi Radio & Network Manager (nmcli / nmtui)
-- Bluetooth Power (bluetoothctl)
-- Do Not Disturb (DND) Mode
-- Quick Desktop Mode & Theme Studio Pro
+KORTEX-CONTROL-CENTER: Dropdown Control Center for Volume, Brightness, Wi-Fi & Bluetooth
 """
 
 import os
@@ -21,7 +14,7 @@ def get_volume():
         res = subprocess.run(["wpctl", "get-volume", "@DEFAULT_AUDIO_SINK@"], capture_output=True, text=True, timeout=2)
         out = res.stdout.strip()
         if "MUTED" in out:
-            return "MUTED"
+            return "ВЫКЛ"
         parts = out.split(":")
         if len(parts) > 1:
             v = float(parts[1].strip().split()[0])
@@ -43,45 +36,48 @@ def get_brightness():
 def get_wifi_state():
     try:
         res = subprocess.run(["nmcli", "radio", "wifi"], capture_output=True, text=True, timeout=2)
-        return res.stdout.strip().upper() or "ENABLED"
+        st = res.stdout.strip().upper()
+        return "ВКЛ" if st == "ENABLED" else ("ВЫКЛ" if st == "DISABLED" else "ВКЛ")
     except Exception:
-        return "ENABLED"
+        return "ВКЛ"
 
 def get_bt_state():
     try:
         res = subprocess.run(["bluetoothctl", "show"], capture_output=True, text=True, timeout=2)
-        return "ON" if "Powered: yes" in res.stdout else "OFF"
+        return "ВКЛ" if "Powered: yes" in res.stdout else "ВЫКЛ"
     except Exception:
-        return "OFF"
+        return "ВЫКЛ"
 
 def main():
+    if subprocess.run(["pgrep", "-x", "rofi"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
+        subprocess.run(["pkill", "-x", "rofi"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        sys.exit(0)
+
     vol = get_volume()
     bri = get_brightness()
     wifi = get_wifi_state()
     bt = get_bt_state()
-    dnd = "ON (Silent)" if os.path.exists(DND_FLAG) else "OFF (Active)"
+    dnd = "ВКЛ" if os.path.exists(DND_FLAG) else "ВЫКЛ"
 
     items = [
-        (f"🔊 Volume ({vol}) : +10% Raise", "wpctl set-volume -l 1.5 @DEFAULT_AUDIO_SINK@ 10%+"),
-        (f"🔉 Volume ({vol}) : -10% Lower", "wpctl set-volume @DEFAULT_AUDIO_SINK@ 10%-"),
-        (f"🔇 Volume ({vol}) : Toggle Mute", "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"),
-        (f"☀️ Brightness ({bri}) : +15% Brighter", "brightnessctl set +15%"),
-        (f"🌙 Brightness ({bri}) : -15% Dimmer", "brightnessctl set 15%-"),
-        (f"💡 Brightness ({bri}) : Set 100% Max", "brightnessctl set 100%"),
-        (f"📶 Wi-Fi [{wifi}] : Toggle Wireless Radio", f"nmcli radio wifi {'off' if wifi == 'ENABLED' else 'on'}"),
-        (f"🌐 Wi-Fi Networks : Open Network Manager (nmtui)", "kitty --class nm-connection-editor -e nmtui"),
-        (f"🦷 Bluetooth [{bt}] : Toggle Power", f"bluetoothctl power {'off' if bt == 'ON' else 'on'}"),
-        (f"🔕 Do Not Disturb [{dnd}] : Toggle DND", "TOGGLE_DND"),
-        ("🖥️ Layout : Switch Desktop Mode (Cyber-Deck / MacBook / Tiling)", "/usr/local/bin/kortex-layout next"),
-        ("🎨 Theme Studio Pro : Open Kortex Settings", "/usr/local/bin/kortex-open settings"),
-        ("🔒 Lock Session", "/usr/local/bin/kortex-open lock")
+        (f"🔊 Громкость ({vol}) : Прибавить +10%", "wpctl set-volume -l 1.5 @DEFAULT_AUDIO_SINK@ 10%+"),
+        (f"🔉 Громкость ({vol}) : Убавить -10%", "wpctl set-volume @DEFAULT_AUDIO_SINK@ 10%-"),
+        (f"🔇 Громкость ({vol}) : Вкл / Выкл звук", "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"),
+        (f"☀️ Яркость ({bri}) : Ярче +15%", "brightnessctl set +15%"),
+        (f"🌙 Яркость ({bri}) : Темнее -15%", "brightnessctl set 15%-"),
+        (f"📶 Wi-Fi [{wifi}] : Вкл / Выкл беспроводную сеть", f"nmcli radio wifi {'off' if wifi == 'ВКЛ' else 'on'}"),
+        ("🌐 Сети Wi-Fi : Выбрать сеть и подключиться (nmtui)", "kitty --class nm-connection-editor -e nmtui"),
+        (f"🦷 Bluetooth [{bt}] : Вкл / Выкл", f"bluetoothctl power {'off' if bt == 'ВКЛ' else 'on'}"),
+        (f"🔕 Не беспокоить [{dnd}]", "TOGGLE_DND"),
+        ("⚙️ Настройки системы", "/usr/local/bin/kortex-open settings"),
+        ("🔒 Заблокировать экран", "/usr/local/bin/kortex-open lock")
     ]
 
     prompt_text = "\n".join(label for label, _ in items)
     rofi_theme = """
     * { font: "JetBrainsMono Nerd Font 11"; }
     window {
-        width: 480px;
+        width: 500px;
         location: northeast;
         anchor: northeast;
         x-offset: -14px;
@@ -100,14 +96,14 @@ def main():
         children: [ prompt, entry ];
     }
     prompt { text-color: #00f0ff; font-weight: bold; margin: 0 8px 0 0; }
-    entry { text-color: #ffffff; placeholder: "Control Center..."; placeholder-color: #6e7681; }
+    entry { text-color: #ffffff; placeholder: "Звук, яркость, Wi-Fi..."; placeholder-color: #6e7681; }
     listview { lines: 11; background-color: transparent; spacing: 4px; }
     element { border-radius: 8px; padding: 7px 10px; background-color: transparent; text-color: #e6edf3; }
     element selected { background-color: rgba(0, 240, 255, 0.22); text-color: #00f0ff; border: 1px; border-color: #00f0ff; }
     """
 
     res = subprocess.run(
-        ["rofi", "-dmenu", "-i", "-p", "🎛 CONTROL CENTER", "-theme-str", rofi_theme],
+        ["rofi", "-dmenu", "-i", "-p", "🎛 Звук и Сеть", "-theme-str", rofi_theme],
         input=prompt_text,
         capture_output=True,
         text=True

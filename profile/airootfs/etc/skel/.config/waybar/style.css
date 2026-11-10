@@ -1,141 +1,92 @@
-@define-color accent #00f0ff;
+/* ==========================================================================
+   KORTEX-OS TOP BAR STYLESHEET
+   ========================================================================== */
 
 * {
     border: none;
     border-radius: 0;
-    font-family: "JetBrainsMono Nerd Font", monospace;
+    font-family: "JetBrainsMono Nerd Font", "JetBrains Mono", monospace;
     font-size: 11px;
-    font-weight: bold;
+    font-weight: 700;
     min-height: 0;
 }
 
 window#waybar {
-    background: #000000;
-    color: #ffffff;
-    border-bottom: 1px solid #333333;
+    background: rgba(10, 12, 16, 0.90);
+    color: #e6edf3;
+    border-bottom: 2px solid #00f0ff;
+    margin: 0px;
+    border-radius: 0px;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 #custom-menu {
-    background: @accent;
-    color: #000000;
-    padding: 0 8px;
-    margin-right: 4px;
+    background: #00f0ff;
+    color: #0a0c10;
+    padding: 0 10px;
+    margin: 3px 4px;
+    border-radius: 6px;
+    font-weight: 900;
+    letter-spacing: 1px;
 }
 
-#custom-layout {
-    background: #111a24;
-    color: @accent;
-    border: 1px solid @accent;
-    padding: 0 6px;
-    margin-right: 4px;
+#custom-spotlight, #custom-control-center {
+    background: rgba(18, 22, 31, 0.95);
+    color: #00f0ff;
+    border: 1px solid #0088cc;
+    border-radius: 6px;
+    padding: 0 10px;
+    margin: 3px 2px;
 }
 
-#custom-layout:hover {
-    background: @accent;
-    color: #000000;
+#custom-spotlight:hover, #custom-control-center:hover {
+    background: #00f0ff;
+    color: #0a0c10;
 }
 
-#custom-win-min,
-#custom-win-max {
-    background: #1a1a1a;
-    color: #cccccc;
-    padding: 0 4px;
-    margin-right: 2px;
-}
-
-#custom-win-min:hover,
-#custom-win-max:hover {
-    background: #333333;
-    color: #ffffff;
-}
-
-#custom-win-close {
-    background: #33000a;
-    color: #ff3355;
-    border: 1px solid #ff003c;
-    padding: 0 6px;
-    margin-right: 6px;
+#custom-win-max, #custom-win-close {
+    background: rgba(18, 22, 31, 0.95);
+    color: #c9d1d9;
+    border-radius: 6px;
+    padding: 0 7px;
+    margin: 3px 2px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
 }
 
 #custom-win-close:hover {
     background: #ff003c;
     color: #ffffff;
+    border-color: #ff003c;
 }
 
-#custom-store,
-#custom-ai,
-#custom-settings,
-#custom-guard {
-    padding: 0 5px;
+#custom-win-max:hover {
+    background: #0088cc;
     color: #ffffff;
-    background: transparent;
-}
-
-#custom-store:hover,
-#custom-ai:hover,
-#custom-settings:hover,
-#custom-guard:hover {
-    background: #222222;
-    color: @accent;
-}
-
-#custom-plugins {
-    padding: 0 8px;
-    color: @accent;
-    background: #0d1a24;
-    border-radius: 2px;
-    margin-right: 8px;
-}
-
-#taskbar {
-    margin-left: 6px;
 }
 
 #taskbar button {
-    padding: 0 6px;
-    color: #aaaaaa;
-    background: #111111;
-    border: 1px solid #333333;
-    margin: 2px 2px;
+    padding: 0 8px;
+    margin: 3px 2px;
+    color: #8b949e;
+    border-radius: 6px;
+    background: transparent;
 }
 
 #taskbar button.active {
-    color: #000000;
-    background: @accent;
-    border: 1px solid @accent;
+    color: #0a0c10;
+    background: #00f0ff;
 }
 
-#taskbar button:hover {
-    background: #222222;
-    color: #ffffff;
-}
-
-#custom-logo,
-#network,
-#cpu,
-#memory,
-#disk,
-#battery,
-#clock {
-    padding: 0 8px;
-    background: transparent;
-    color: #ffffff;
-}
-
-#custom-logo {
-    letter-spacing: 2px;
-    color: @accent;
-}
-
-#network,
-#cpu,
-#memory,
-#disk,
-#battery {
-    color: #888888;
+#clock, #battery, #network {
+    background: rgba(18, 22, 31, 0.95);
+    color: #00f0ff;
+    border-radius: 6px;
+    padding: 0 9px;
+    margin: 3px 2px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 #clock {
     color: #ffffff;
-    background: #111111;
+    border-color: #00f0ff;
 }

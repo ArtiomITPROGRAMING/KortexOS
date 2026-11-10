@@ -18,7 +18,7 @@ import time
 import curses
 import subprocess
 import urllib.request
-import urllib.error
+import urllib.erro
 
 BANNER = """
  ╔════════════════════════════════════════════════════════════════════════════╗
@@ -185,7 +185,7 @@ def explain_error(query):
 
 def query_local_llm(prompt):
     """Attempt connection to local llama-server (port 8080) or Ollama (port 11434)."""
-    # 1. Try llama-server
+    # 1. Try llama-serve
     try:
         req = urllib.request.Request(
             "http://127.0.0.1:8080/completion",
@@ -272,7 +272,7 @@ def answer_query(user_text):
     if llm_resp:
         return f"[LOCAL LLM // QWEN-2.5]:\n{llm_resp}"
 
-    # Default knowledge synthesizer
+    # Default knowledge synthesize
     return (
         f"KORTEX INTELLIGENCE ENGINE:\n"
         f"Query processed: '{text}'\n\n"
@@ -349,7 +349,7 @@ def run_chat_tui(stdscr):
                             cur_line = (cur_line + " " + word).strip()
                     if cur_line or not words:
                         display_lines.append(("  " + cur_line, curses.color_pair(1), False))
-                display_lines.append(("", 0, False)) # blank separator
+                display_lines.append(("", 0, False)) # blank separato
 
             # Render visible tail of display_lines
             visible = display_lines[-max_chat_lines:] if len(display_lines) > max_chat_lines else display_lines
@@ -390,7 +390,7 @@ def run_chat_tui(stdscr):
                     history.append(("USER", q))
                     user_input = ""
 
-                    # Compute answer
+                    # Compute answe
                     ans = answer_query(q)
                     history.append(("AI", ans))
 
@@ -419,7 +419,7 @@ def run_chat_tui(stdscr):
                         user_input = ""
                     else:
                         user_input = prompt_history[hist_idx]
-            elif 32 <= ch <= 126:  # Printable character
+            elif 32 <= ch <= 126:  # Printable characte
                 user_input += chr(ch)
 
         except Exception as e:

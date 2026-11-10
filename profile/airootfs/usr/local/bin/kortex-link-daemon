@@ -10,7 +10,7 @@ import sys
 import json
 import time
 import subprocess
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import HTTPServer, BaseHTTPRequestHandle
 import socket
 
 PORT = 8090

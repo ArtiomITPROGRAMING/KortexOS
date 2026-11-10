@@ -90,10 +90,10 @@ def draw_keyboard(stdscr):
     curses.use_default_colors()
     curses.init_pair(1, curses.COLOR_WHITE, -1)   # Standard outline & text
     dim_color = 8 if curses.COLORS >= 16 else curses.COLOR_WHITE
-    curses.init_pair(2, dim_color, -1)            # Dim border
+    curses.init_pair(2, dim_color, -1)            # Dim borde
     curses.init_pair(3, curses.COLOR_BLACK, curses.COLOR_WHITE) # Inverted active / illuminated
 
-    # Background evdev hardware listener
+    # Background evdev hardware listene
     t = threading.Thread(target=evdev_listener, daemon=True)
     t.start()
 

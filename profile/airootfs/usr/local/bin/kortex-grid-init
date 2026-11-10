@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# KORTEX-OS SESSION & GRID INITIALIZER
-# Checks ~/.config/kortex/.setup_done on first boot -> launches kortex-oobe,
-# then activates selected Desktop Mode (Cyber-Deck Grid / MacBook Pro / Tiling)
+# KORTEX-OS DESKTOP SESSION INITIALIZER
+# Instant boot into a clean desktop with Cyber Glass wallpaper,
+# top Waybar panel, and bottom 6-icon Glass Dock (no OOBE, no 5-panel grid).
 # ==============================================================================
 
 exec > >(tee /tmp/kortex-init.log) 2>&1
@@ -35,80 +35,27 @@ if systemd-detect-virt --quiet 2>/dev/null; then
     export WLR_RENDERER_ALLOW_SOFTWARE=1
 fi
 
-# Ensure Waybar top bar is running
-if ! pgrep -x waybar >/dev/null 2>&1; then
+mkdir -p "$HOME/.config/kortex" 2>/dev/null || true
+touch "$HOME/.config/kortex/.setup_done" 2>/dev/null || true
+
+# Allow hyprland.start background commands to initialize before watchdog checks
+sleep 0.5
+
+# 1. Ensure default wallpaper (/usr/share/backgrounds/kortex/cyber_glass.png) is active
+if ! pgrep -x hyprpaper >/dev/null 2>&1; then
+    hyprpaper >/dev/null 2>&1 &
+fi
+
+# 2. Ensure top Waybar panel is running
+if ! pgrep -f "^(/usr/bin/)?waybar$" >/dev/null 2>&1; then
     waybar >/dev/null 2>&1 &
 fi
 
-# 1. FIRST-BOOT OOBE CHECK (~/.config/kortex/.setup_done)
-mkdir -p "$HOME/.config/kortex" 2>/dev/null || true
-if [ ! -f "$HOME/.config/kortex/.setup_done" ]; then
-    kitty --class kortex-oobe --title "KORTEX-OS SETUP" -e /usr/local/bin/kortex-oobe
-fi
-
-# 2. Check selected desktop mode in master-state.json unless --force-grid passed
-MASTER_STATE="$HOME/.config/kortex/master-state.json"
-PHILOSOPHY="cyberdeck"
-if [ -f "$MASTER_STATE" ] && command -v jq >/dev/null 2>&1; then
-    PHILOSOPHY=$(jq -r '.interface.philosophy // "cyberdeck"' "$MASTER_STATE" 2>/dev/null || echo "cyberdeck")
-fi
-
-if [ "${1:-}" != "--force-grid" ]; then
-    if [ "$PHILOSOPHY" = "macbook" ]; then
-        exec /usr/local/bin/kortex-layout floating
-    elif [ "$PHILOSOPHY" = "tiling" ]; then
-        exec /usr/local/bin/kortex-layout tiling
+# 3. Ensure bottom 6-icon Dock is running
+if [ -f "$HOME/.config/waybar/config-dock" ]; then
+    if ! pgrep -f "waybar -c .*config-dock" >/dev/null 2>&1; then
+        waybar -c "$HOME/.config/waybar/config-dock" -s "$HOME/.config/waybar/style-dock.css" >/dev/null 2>&1 &
     fi
 fi
 
-# 3. Cyber-Deck 5-Panel Grid Spawner (only kill grid module classes, never user/OOBE windows)
-pkill -f "kitty --class kortex-term" 2>/dev/null || true
-pkill -f "kitty --class kortex-pulse" 2>/dev/null || true
-pkill -f "kitty --class kortex-net" 2>/dev/null || true
-pkill -f "kitty --class kortex-files" 2>/dev/null || true
-pkill -f "kitty --class kortex-kb" 2>/dev/null || true
-pkill -f "waybar -c .*config-dock" 2>/dev/null || true
-sleep 0.2
-
-widget_enabled() {
-    local w_name="$1"
-    if [ -f "$MASTER_STATE" ] && command -v jq >/dev/null 2>&1; then
-        local val
-        val=$(jq -r ".grid_widgets.${w_name} // true" "$MASTER_STATE" 2>/dev/null || echo "true")
-        [ "$val" != "false" ]
-        return $?
-    fi
-    return 0
-}
-
-# 1. Main Center Terminal
-if widget_enabled "terminal"; then
-    if [ -f /etc/kortex/kitty-main.session ]; then
-        kitty --class kortex-term --session /etc/kortex/kitty-main.session &
-    else
-        kitty --class kortex-term --title "MAIN" &
-    fi
-fi
-
-# 2. System Telemetry Pulse (Left)
-if widget_enabled "sys_panel"; then
-    kitty --class kortex-pulse -e /usr/local/bin/kortex-sys-panel &
-fi
-
-# 3. 3D Globe & Network Telemetry (Right-Top)
-if widget_enabled "globe_net"; then
-    kitty --class kortex-net -e /usr/local/bin/kortex-net-monitor &
-fi
-
-# 4. File Grid Explorer (Center-Bottom)
-if widget_enabled "file_grid"; then
-    kitty --class kortex-files -e /usr/local/bin/kortex-file-grid &
-fi
-
-# 5. Interactive QWERTY Keyboard (Right-Bottom)
-if widget_enabled "virtual_keyboard"; then
-    kitty --class kortex-kb -e /usr/local/bin/kortex-keyboard &
-fi
-
-sleep 0.1
-/usr/local/bin/kortex-grid-align &
+exit 0

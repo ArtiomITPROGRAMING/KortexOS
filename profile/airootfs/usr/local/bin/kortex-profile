@@ -61,10 +61,9 @@ def apply_live(st):
             subprocess.run(["/usr/local/bin/kortex-wallpaper", "terminal", term_wp["image_path"], str(term_wp.get("dimming", 0.75))], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         else:
             subprocess.run(["/usr/local/bin/kortex-wallpaper", "terminal", "none"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    phil = st.get("interface", {}).get("philosophy", "cyberdeck")
+    phil = st.get("interface", {}).get("philosophy", "tiling")
     if os.path.exists("/usr/local/bin/kortex-layout"):
-        mode_map = {"cyberdeck": "grid", "macbook": "floating", "tiling": "tiling"}
-        subprocess.run(["/usr/local/bin/kortex-layout", mode_map.get(phil, "grid")], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(["/usr/local/bin/kortex-layout", "tiling"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 def cmd_export(output_path=None):
     st = load_master()
@@ -174,7 +173,7 @@ def cmd_reset():
     if os.path.exists("/usr/local/bin/kortex-theme-apply"):
         subprocess.run(["/usr/local/bin/kortex-theme-apply", "--reset"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if os.path.exists("/usr/local/bin/kortex-wallpaper"):
-        subprocess.run(["/usr/local/bin/kortex-wallpaper", "desktop", "grid"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(["/usr/local/bin/kortex-wallpaper", "desktop", "glass"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         subprocess.run(["/usr/local/bin/kortex-wallpaper", "terminal", "none"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     print("[+] KortexOS customization restored to factory defaults!")
 
@@ -184,7 +183,7 @@ def cmd_status():
     pal = th.get("palette", {})
     borders = th.get("borders", {})
     glass = th.get("glass", {})
-    phil = st.get("interface", {}).get("philosophy", "cyberdeck")
+    phil = st.get("interface", {}).get("philosophy", "tiling")
     wp = st.get("wallpaper", {})
     plugins = [p for p in os.listdir(PLUGINS_DIR) if os.path.isfile(os.path.join(PLUGINS_DIR, p))] if os.path.exists(PLUGINS_DIR) else []
 

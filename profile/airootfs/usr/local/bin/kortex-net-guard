@@ -213,11 +213,11 @@ def tui_main(stdscr):
         safe_addstr(stdscr, 0, 0, "┌" + "─" * (w - 2) + "┐", border_attr)
         safe_addstr(stdscr, h - 1, 0, "└" + "─" * (w - 2) + "┘", border_attr)
 
-        # Title Bar
+        # Title Ba
         title = " [ KORTEX DEFENSE SENTINEL // NETWORK RADAR & FIREWALL SHIELD ] "
         safe_addstr(stdscr, 0, max(2, (w - len(title)) // 2), title, curses.color_pair(2) if not panic else curses.color_pair(4))
 
-        # Panic Status Banner
+        # Panic Status Banne
         if panic:
             status_banner = " !! PANIC LOCKDOWN ACTIVE // ALL EXTERNAL TRAFFIC BLOCKED [NFT/IPTABLES DROP] !! "
             safe_addstr(stdscr, 2, max(2, (w - len(status_banner)) // 2), status_banner, curses.color_pair(4) | curses.A_BLINK | curses.A_BOLD)
@@ -225,7 +225,7 @@ def tui_main(stdscr):
             status_banner = " SYSTEM STATUS: ALL NETWORK PERIMETERS SECURE // PACKET INSPECTOR LIVE "
             safe_addstr(stdscr, 2, max(2, (w - len(status_banner)) // 2), status_banner, curses.color_pair(6) | curses.A_BOLD)
 
-        # Section 1: Subnet Radar
+        # Section 1: Subnet Rada
         sec1_title = " [ 1. LOCAL SUBNET RADAR ] "
         safe_addstr(stdscr, 4, 3, sec1_title, curses.color_pair(2))
         safe_addstr(stdscr, 5, 3, "IP ADDRESS        MAC ADDRESS        DEV    STATUS", curses.color_pair(5))
@@ -263,7 +263,7 @@ def tui_main(stdscr):
                     safe_addstr(stdscr, c_y, 3, line, curses.color_pair(1))
                     c_y += 1
 
-        # Panic Button & Controls Bar
+        # Panic Button & Controls Ba
         btn_y = h - 3
         panic_btn = " [P] DISENGAGE LOCKDOWN " if panic else " [P] !! PANIC LOCKDOWN !!"
         btn_attr = curses.color_pair(6) | curses.A_BOLD if panic else curses.color_pair(4) | curses.A_BOLD

@@ -97,7 +97,7 @@ def tui_main(stdscr):
         h, w = stdscr.getmaxyx()
         stdscr.erase()
 
-        # Border
+        # Borde
         safe_addstr(stdscr, 0, 0, "┌" + "─" * (w - 2) + "┐", curses.color_pair(1))
         for y in range(1, h - 1):
             safe_addstr(stdscr, y, 0, "│", curses.color_pair(1))
@@ -151,7 +151,7 @@ def tui_main(stdscr):
             safe_addstr(stdscr, feat_y + 3, col2_x, "• Emergency Panic Lockdown Trigger", curses.color_pair(1))
             safe_addstr(stdscr, feat_y + 4, col2_x, "• Two-Way Realtime Clipboard Sync", curses.color_pair(1))
 
-        # Bottom Bar
+        # Bottom Ba
         safe_addstr(stdscr, h - 2, 3, " [Q] Close Companion Deck     [R] Refresh Devices ", curses.color_pair(2))
 
         stdscr.refresh()

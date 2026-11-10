@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Kortex App Hub (kortex-store)
-Curated Software Center, Arch Linux Package Repository & Flatpak Installer
+Curated Software Center, Arch Linux Package Repository & Flatpak Installe
 Dynamic cloud-connected catalog powered by https://github.com/ArtiomITPROGRAMING/kortex-apps
 Tron / eDEX-UI Cyber Aesthetics with 1-click install, remove, and system-wide update.
 """
@@ -159,7 +159,7 @@ def search_pacman(query):
                 desc = lines[i+1].strip()
                 pkg_full = header.split()[0]
                 pkg_name = pkg_full.split("/")[-1]
-                installed = "[installed]" in header
+                installed = "[installed]" in heade
                 results.append((pkg_name, desc, installed))
     except Exception:
         pass
@@ -251,7 +251,7 @@ def tui_main(stdscr):
         safe_addstr(stdscr, 4 + len(categories) + 2, 3, " [R] Reload Cloud Cat ", curses.color_pair(6))
         safe_addstr(stdscr, 4 + len(categories) + 3, 3, " [U] Update All System", curses.color_pair(1))
 
-        # Vertical Divider
+        # Vertical Divide
         for y in range(2, h - 5):
             safe_addstr(stdscr, y, col1_w + 1, "│", curses.color_pair(3))
 
@@ -304,7 +304,7 @@ def tui_main(stdscr):
         else:
             safe_addstr(stdscr, log_y + 1, 4, f">> {status_msg}", curses.color_pair(1))
 
-        # Bottom Controls Bar
+        # Bottom Controls Ba
         safe_addstr(stdscr, h - 2, 3, " [ENTER] Install/Run   [X] Remove   [S] Search   [R] Reload Catalog   [U] Update   [Q] Exit ", curses.color_pair(2))
 
         stdscr.refresh()

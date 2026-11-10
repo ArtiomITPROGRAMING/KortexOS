@@ -63,7 +63,7 @@ def create_snapshot(desc="manual"):
     if valid_paths:
         cmd = ["tar", "--zstd", "-cf", out_tar] + valid_paths
         subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        return True, out_tar
+        return True, out_ta
     return False, "No valid paths found"
 
 def rollback_snapshot(snap_path):
@@ -106,7 +106,7 @@ def open_vault(passphrase):
             subprocess.run(["sudo", "cryptsetup", "close", VAULT_NAME], stdout=subprocess.DEVNULL)
             return False, "Failed to mount filesystem"
 
-        # Chown to user
+        # Chown to use
         u = getpass.getuser()
         subprocess.run(["sudo", "chown", "-R", f"{u}:{u}", VAULT_MOUNT], stdout=subprocess.DEVNULL)
         subprocess.run(["kortex-audio-fx", "--play", "granted"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -187,7 +187,7 @@ def tui_main(stdscr):
         h, w = stdscr.getmaxyx()
         stdscr.erase()
 
-        # Border
+        # Borde
         safe_addstr(stdscr, 0, 0, "┌" + "─" * (w - 2) + "┐", curses.color_pair(1))
         for y in range(1, h - 1):
             safe_addstr(stdscr, y, 0, "│", curses.color_pair(1))

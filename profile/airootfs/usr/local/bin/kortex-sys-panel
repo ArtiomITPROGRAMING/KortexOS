@@ -223,7 +223,7 @@ def draw_panel(stdscr):
                 safe_addstr(stdscr, curr_y, max(8, w - len(mem_txt) - 2), mem_txt, curses.color_pair(2) | dim_attr)
                 curr_y += 1
                 
-                # Full-width memory progress bar
+                # Full-width memory progress ba
                 bar_mem_w = max(4, w - 4)
                 filled_mem = int((mem_pct / 100.0) * bar_mem_w)
                 bar_mem = ("█" * filled_mem) + ("░" * (bar_mem_w - filled_mem))

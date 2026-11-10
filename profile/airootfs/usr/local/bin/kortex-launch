@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# KortexOS Smart Application Launcher & Workspace Router (kortex-launch)
-# Routes user applications to Workspace 2 ONLY when Cyber-Deck 5-Panel Grid is active
-# on Workspace 1; otherwise opens directly on the current workspace (Windows/Mac UX).
+# KortexOS Smart Application Launcher (kortex-launch)
+# Launches user applications directly on the current workspace with audio cue.
 # ==============================================================================
 
 set -eu
@@ -10,29 +9,6 @@ set -eu
 if [ "$#" -eq 0 ]; then
     echo "Usage: kortex-launch <command> [args...]"
     exit 1
-fi
-
-ensure_hyprland_sig() {
-    if [ -z "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
-        local sig
-        sig=$(ls -td /run/user/"$(id -u)"/hypr/* 2>/dev/null | head -n 1 | xargs -r basename)
-        if [ -n "$sig" ]; then
-            export HYPRLAND_INSTANCE_SIGNATURE="$sig"
-        fi
-    fi
-}
-
-ensure_hyprland_sig
-
-# Only switch away from Workspace 1 if the 5-panel Cyber-Deck Grid is actively running on it
-if pgrep -f "kitty --class kortex-pulse" >/dev/null 2>&1; then
-    cur_ws=""
-    if command -v hyprctl >/dev/null 2>&1 && [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
-        cur_ws=$(hyprctl activeworkspace -j 2>/dev/null | grep -o '"id": *[0-9]*' | head -n 1 | awk '{print $2}' || true)
-    fi
-    if [ "$cur_ws" = "1" ]; then
-        hyprctl dispatch workspace 2 >/dev/null 2>&1 || true
-    fi
 fi
 
 # Play subtle audio feedback

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
 ==============================================================================
-KORTEX-MUSIC: Cyberdeck Audio Station & Synthwave Stream Player
+KORTEX-MUSIC: Cyberdeck Audio Station & Synthwave Stream Playe
 Terminal-based high performance audio player for KortexOS.
 Features:
 - Live Cyberpunk & Lo-Fi internet radio streams (Nightwave Plaza, SomaFM, Lofi Girl)
 - Local audio file & library player (~/Music, /usr/share/kortex/music, .mp3, .wav, .flac, .ogg)
-- Animated ASCII VU-meter / Spectrum visualizer
+- Animated ASCII VU-meter / Spectrum visualize
 - Low-latency PipeWire / MPV backend with IPC controls
 - Waybar top panel live status sync
 ==============================================================================
@@ -167,7 +167,7 @@ def scan_local_tracks():
     return sorted(tracks, key=lambda x: x[0].lower())
 
 def draw_visualizer(win, y, x, width, active):
-    # Renders an ASCII audio equalizer bar
+    # Renders an ASCII audio equalizer ba
     chars = [" ", " ", "▂", "▃", "▄", "▅", "▆", "▇", "█"]
     bars = []
     for i in range(width):
@@ -239,7 +239,7 @@ def tui_music(stdscr, initial_file=None):
 
             mpv.poll_status()
 
-            # Outer Border
+            # Outer Borde
             try:
                 stdscr.addstr(0, 0, "┌" + "─" * (w - 2) + "┐", curses.color_pair(3))
                 for y in range(1, h - 1):
@@ -336,7 +336,7 @@ def tui_music(stdscr, initial_file=None):
                         except curses.error:
                             pass
 
-            # Footer Controls Bar
+            # Footer Controls Ba
             footer_text = " [SPACE] Play/Pause  [N] Next  [P] Prev  [S] Stop  [+/-] Vol  [1-5] Radio  [L] Local  [Q] Exit "
             try:
                 stdscr.addstr(h - 2, max(2, (w - len(footer_text)) // 2), footer_text[:w - 4], curses.color_pair(2))

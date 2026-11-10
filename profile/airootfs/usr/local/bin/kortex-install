@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-KortexOS Intelligence System (KIS) - Low-Level Operating System Installer
+KortexOS Intelligence System (KIS) - Low-Level Operating System Installe
 Deploy KortexOS to bare-metal NVMe/SSD/HDD or virtual disks with smart partitioning,
 UEFI/BIOS bootloader installation, and automatic hardware adaptation.
 """
@@ -217,7 +217,7 @@ def configure_target(target_dir, disk, esp_part, root_part, hostname="kortexos",
     print("[*] Rebuilding kernel initramfs (linux-zen with plymouth)...")
     run_cmd(f"arch-chroot {target_dir} mkinitcpio -P")
     
-    # Install Bootloader
+    # Install Bootloade
     if uefi:
         print("[*] Installing systemd-boot (UEFI)...")
         run_cmd(f"arch-chroot {target_dir} bootctl install")

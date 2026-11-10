@@ -1,51 +1,27 @@
 {
     "layer": "top",
     "position": "top",
-    "height": 28,
+    "height": 30,
     "modules-left": [
         "custom/menu",
-        "custom/layout",
-        "custom/win-min",
         "custom/win-max",
         "custom/win-close",
-        "custom/guide",
-        "custom/store",
-        "custom/ai",
-        "custom/settings",
-        "custom/guard",
         "wlr/taskbar"
     ],
     "modules-center": [
-        "custom/spotlight",
-        "custom/plugins",
-        "custom/logo"
+        "custom/spotlight"
     ],
     "modules-right": [
-        "custom/control-center",
         "network",
-        "cpu",
-        "memory",
-        "disk",
         "battery",
+        "custom/control-center",
         "clock"
     ],
 
     "custom/menu": {
-        "format": "[ ⊞ ПУСК ]",
+        "format": "[ ⊞ Пуск ]",
         "on-click": "/usr/local/bin/kortex-menu",
-        "tooltip": "Главное меню Пуск // Приложения и Система (Super+D)"
-    },
-    "custom/layout": {
-        "exec": "/usr/local/bin/kortex-layout waybar",
-        "return-type": "json",
-        "interval": 2,
-        "on-click": "/usr/local/bin/kortex-layout next",
-        "tooltip": "Переключить режим стола: Mac+Windows Док / Cyber-Deck / Тайлинг (Super+Tab)"
-    },
-    "custom/win-min": {
-        "format": "[ _ ]",
-        "on-click": "hyprctl dispatch togglefloating",
-        "tooltip": "Плавающее / Тайлинговое окно (Super+V)"
+        "tooltip": "Главное меню Пуск (Super+D)"
     },
     "custom/win-max": {
         "format": "[ □ ]",
@@ -57,91 +33,38 @@
         "on-click": "hyprctl dispatch killactive",
         "tooltip": "Закрыть активное окно (Super+Q / Alt+F4)"
     },
-    "custom/spotlight": {
-        "format": "[ ⌕ SPOTLIGHT ]",
-        "on-click": "/usr/local/bin/kortex-spotlight",
-        "tooltip": "Поиск программ, файлов и калькулятор Spotlight (Super+Space)"
-    },
-    "custom/control-center": {
-        "format": "[ 🎛 CTRL ]",
-        "on-click": "/usr/local/bin/kortex-control-center",
-        "tooltip": "Центр управления: Громкость, Яркость, Wi-Fi, Bluetooth, DND (Super+C)"
-    },
-    "custom/guide": {
-        "format": "[ ? GUIDE ]",
-        "on-click": "kitty --class kortex-tour --title 'KORTEX OS :: SYSTEM GUIDE' -e /usr/local/bin/kortex-tour",
-        "tooltip": "System Interactive Guide & Welcome Tour (Super+F1)"
-    },
-    "custom/store": {
-        "format": "[STORE]",
-        "on-click": "/usr/local/bin/kortex-open store",
-        "tooltip": "Kortex App Hub & Software Center (Super+P)"
-    },
-    "custom/ai": {
-        "format": "[AI]",
-        "on-click": "/usr/local/bin/kortex-open ai",
-        "tooltip": "Kortex AI Assistant (Super+A)"
-    },
-    "custom/settings": {
-        "format": "[SET]",
-        "on-click": "/usr/local/bin/kortex-open settings",
-        "tooltip": "Kortex Theme Studio Pro & Settings (Super+S)"
-    },
-    "custom/guard": {
-        "format": "[NET]",
-        "on-click": "/usr/local/bin/kortex-open net-guard",
-        "tooltip": "Network Sentinel & Panic Lockdown (Super+N)"
-    },
     "wlr/taskbar": {
         "format": "{icon} {name}",
         "icon-size": 14,
         "tooltip-format": "{title}",
         "on-click": "activate",
-        "on-click-middle": "close",
-        "ignore-list": [
-            "kortex-pulse",
-            "kortex-term",
-            "kortex-net",
-            "kortex-files",
-            "kortex-kb"
-        ]
+        "on-click-middle": "close"
     },
-    "custom/plugins": {
-        "exec": "/usr/local/bin/kortex-plugin-status",
-        "return-type": "json",
-        "interval": 3,
-        "on-click": "/usr/local/bin/kortex-menu",
-        "tooltip": "User Plugins in ~/.config/kortex/plugins/"
-    },
-    "custom/logo": {
-        "format": "[KORTEX-OS]"
+    "custom/spotlight": {
+        "format": "[ ⌕ Поиск ]",
+        "on-click": "/usr/local/bin/kortex-spotlight",
+        "tooltip": "Поиск программ, файлов и калькулятор (Super+Space)"
     },
     "network": {
-        "format-wifi": "Net: {signalStrength}%",
-        "format-ethernet": "Net: {ipaddr}",
-        "format-disconnected": "Net: Offline",
+        "format-wifi": "Wi-Fi: {signalStrength}%",
+        "format-ethernet": "Сеть: {ipaddr}",
+        "format-disconnected": "Wi-Fi: Выкл",
         "tooltip-format": "{ifname}: {ipaddr}",
         "on-click": "/usr/local/bin/kortex-control-center"
     },
-    "cpu": {
-        "interval": 2,
-        "format": "CPU: {usage}%"
-    },
-    "memory": {
-        "interval": 2,
-        "format": "RAM: {percentage}%"
-    },
-    "disk": {
-        "interval": 30,
-        "format": "Disk: {percentage_used}%"
-    },
     "battery": {
-        "format": "Bat: {capacity}%",
-        "format-charging": "Bat: {capacity}% [AC]"
+        "format": "Батарея: {capacity}%",
+        "format-charging": "Зарядка: {capacity}%"
+    },
+    "custom/control-center": {
+        "format": "[ 🎛 Звук и Сеть ]",
+        "on-click": "/usr/local/bin/kortex-control-center",
+        "tooltip": "Звук, яркость, Wi-Fi и Bluetooth (Super+C)"
     },
     "clock": {
         "interval": 1,
-        "format": "{:%H:%M:%S}",
+        "format": "{:%H:%M}",
+        "tooltip-format": "{:%d.%m.%Y %H:%M:%S}",
         "on-click": "/usr/local/bin/kortex-control-center"
     }
 }

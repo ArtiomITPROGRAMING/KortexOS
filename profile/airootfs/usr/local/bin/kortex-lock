@@ -116,7 +116,7 @@ def lock_ui(stdscr):
         for y in range(by, by + box_h):
             safe_addstr(stdscr, y, bx, " " * box_w, curses.color_pair(1))
 
-        # Box Border
+        # Box Borde
         b_attr = curses.color_pair(3) | curses.A_BOLD if flash_state == "denied" else (
                  curses.color_pair(5) | curses.A_BOLD if flash_state == "granted" else curses.color_pair(1) | curses.A_BOLD)
         
@@ -169,7 +169,7 @@ def lock_ui(stdscr):
             if ch == -1:
                 continue
 
-            if ch in (10, 13, curses.KEY_ENTER): # Enter
+            if ch in (10, 13, curses.KEY_ENTER): # Ente
                 entered = "".join(input_pass)
                 if verify_credentials(entered):
                     flash_state = "granted"
